@@ -1,0 +1,17 @@
+.idea/
+build/
+build-*/
+cmake-build-debug/
+cmake-build-release/
+CMakeCache.txt
+CMakeFiles/
+Testing/
+*.cmake.user
+compile_commands.json
+conan.lock
+*.obj
+*.lib
+*.dll
+*.exe
+*.pdb
+
