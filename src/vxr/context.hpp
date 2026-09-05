@@ -53,6 +53,14 @@ namespace vxr {
             return vulkan_.device;
         }
 
+        [[nodiscard]] vkz::context &vulkan_context() noexcept {
+            return vulkan_;
+        }
+
+        [[nodiscard]] const vkz::context &vulkan_context() const noexcept {
+            return vulkan_;
+        }
+
         [[nodiscard]] VkSurfaceKHR surface() const noexcept {
             return vulkan_.surface;
         }

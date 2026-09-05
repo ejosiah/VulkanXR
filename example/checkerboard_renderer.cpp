@@ -62,8 +62,7 @@ void checkerboard_renderer::init() {
         }
     }
 
-    auto vulkan_context = vkz::context::create_not_owned(xr_context_.vulkan_instance(), device());
-    auto allocator = vkz::vma_memory_allocator::create(vulkan_context);
+    auto allocator = vkz::vma_memory_allocator::create(vulkan_context());
     vkz::staging_buffer staging{allocator, colors.size() * sizeof(color)};
     auto staging_memory = staging.borrow(colors.size() * sizeof(color));
     staging_memory.copy_from(colors.data());
@@ -82,7 +81,7 @@ void checkerboard_renderer::init() {
         image.create_info.arrayLayers = static_cast<std::uint32_t>(layers_.size());
         image.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-        vkz::scope_command_buffer commands{device(), xr_context_.graphics_queue_family(), xr_context_.graphics_queue()};
+        vkz::scope_command_buffer commands{device(), graphics_queue_family(), graphics_queue()};
         vkz::copy(commands, source, image);
         const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, static_cast<std::uint32_t>(layers_.size())};
         vkz::barrier::push_and_flush(commands, image, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,

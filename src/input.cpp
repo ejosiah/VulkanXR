@@ -58,6 +58,10 @@ namespace vxr::input {
         return {};
     }
 
+    htc_vive_controller_profile interaction_profile::htc_vive_controller() {
+        return {};
+    }
+
     std::string simple_interaction_profile::profile() const {
         return "/interaction_profiles/khr/simple_controller";
     }
@@ -132,6 +136,59 @@ namespace vxr::input {
         default:
             throw std::invalid_argument{"Identifier is not supported by the Oculus Touch profile"};
         }
+    }
+
+    std::string htc_vive_controller_profile::profile() const {
+        return "/interaction_profiles/htc/vive_controller";
+    }
+
+    std::string htc_vive_controller_profile::path(identifier value) const {
+        switch (value) {
+        case identifier::system:
+            return "input/system";
+        case identifier::squeeze:
+            return "input/squeeze";
+        case identifier::menu:
+            return "input/menu";
+        case identifier::trigger:
+            return "input/trigger";
+        case identifier::track_pad:
+            return "input/trackpad";
+        case identifier::grip:
+            return "input/grip";
+        case identifier::aim:
+            return "input/aim";
+        case identifier::haptic:
+            return "output/haptic";
+        default:
+            throw std::invalid_argument{"Identifier is not supported by the HTC Vive Controller profile"};
+        }
+    }
+
+    std::optional<std::string> htc_vive_controller_profile::path(const binding &value) const {
+        if (value.location != location::left_hand && value.location != location::right_hand) {
+            return std::nullopt;
+        }
+
+        if (value.identifier == identifier::squeeze && value.component == component::value) {
+            binding adjusted = value;
+            adjusted.identifier = identifier::trigger;
+            return interaction_profile::path(adjusted);
+        }
+
+        const bool supported =
+            (value.identifier == identifier::system && value.component == component::click) ||
+            (value.identifier == identifier::squeeze && value.component == component::click) ||
+            (value.identifier == identifier::menu && value.component == component::click) ||
+            (value.identifier == identifier::trigger && (value.component == component::click || value.component == component::value)) ||
+            (value.identifier == identifier::track_pad &&
+             (value.component == component::x || value.component == component::y || value.component == component::click || value.component == component::touch)) ||
+            (value.identifier == identifier::grip && value.component == component::pose) || (value.identifier == identifier::aim && value.component == component::pose) ||
+            (value.identifier == identifier::haptic && value.component == component::vibrate);
+        if (!supported) {
+            return std::nullopt;
+        }
+        return interaction_profile::path(value);
     }
 
     XrActionType action_type(component value) {

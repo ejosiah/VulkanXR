@@ -64,6 +64,7 @@ namespace vxr::input {
 
     class simple_interaction_profile;
     class oculus_touch_controller_profile;
+    class htc_vive_controller_profile;
 
     class interaction_profile {
       public:
@@ -82,6 +83,8 @@ namespace vxr::input {
         [[nodiscard]] static simple_interaction_profile simple();
 
         [[nodiscard]] static oculus_touch_controller_profile oculus_touch_controller();
+
+        [[nodiscard]] static htc_vive_controller_profile htc_vive_controller();
     };
 
     class simple_interaction_profile final : public interaction_profile {
@@ -92,6 +95,15 @@ namespace vxr::input {
     };
 
     class oculus_touch_controller_profile final : public interaction_profile {
+      public:
+        [[nodiscard]] std::string profile() const override;
+
+        [[nodiscard]] std::string path(identifier value) const override;
+
+        [[nodiscard]] std::optional<std::string> path(const binding &value) const override;
+    };
+
+    class htc_vive_controller_profile final : public interaction_profile {
       public:
         [[nodiscard]] std::string profile() const override;
 

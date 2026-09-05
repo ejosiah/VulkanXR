@@ -170,6 +170,7 @@ namespace vxr::session {
         }
 
         bind_actions(input::interaction_profile::oculus_touch_controller());
+        bind_actions(input::interaction_profile::htc_vive_controller());
 
         auto attach_info = make_struct<XrSessionActionSetsAttachInfo>();
         attach_info.countActionSets = static_cast<std::uint32_t>(handles.size());
@@ -208,6 +209,7 @@ namespace vxr::session {
         layers composition_layers;
         if (frame_state.shouldRender == XR_TRUE) {
             begin_frame();
+            process_actions(frame_state.predictedDisplayTime);
             update_space_locations(service_.session_context_.base_space, frame_state.predictedDisplayTime);
             service_.session_context_.views = locate_views(service_.session_context_.base_space, frame_state.predictedDisplayTime).views;
             view_info views{make_struct<XrViewState>(), service_.session_context_.views};
@@ -271,6 +273,9 @@ namespace vxr::session {
         service_.renderer_.end_frame();
     }
 
+    void running_state::process_actions(XrTime) {
+    }
+
     void running_state::render_frame(const frame_info &frame, layers &composition_layers) {
         service_.renderer_.render(frame, composition_layers);
     }
@@ -315,6 +320,99 @@ namespace vxr::session {
 
     void visible_state::render_frame(const frame_info &frame, layers &composition_layers) {
         service_.renderer_.paused(frame, composition_layers);
+    }
+
+    void focused_state::process_actions(XrTime display_time) {
+        const auto &active_action_sets = service_.session_context_.active_action_sets;
+        if (active_action_sets.empty()) {
+            return;
+        }
+
+        auto sync_info = make_struct<XrActionsSyncInfo>();
+        sync_info.countActiveActionSets = static_cast<std::uint32_t>(active_action_sets.size());
+        sync_info.activeActionSets = active_action_sets.data();
+        check(xrSyncActions(service_.session_, &sync_info), "xrSyncActions");
+
+        for (auto &binding : service_.action_set_bindings_) {
+            const auto active = std::ranges::find(active_action_sets, binding.handle, &XrActiveActionSet::actionSet);
+            if (active == active_action_sets.end()) continue;
+
+            for (auto &[name, state] : binding.state->actions) {
+                state.active = false;
+                state.changed = false;
+            }
+
+            for (const auto &[name, action] : binding.actions) {
+                auto &action_state = binding.state->actions.at(name);
+                auto get_info = make_struct<XrActionStateGetInfo>();
+                get_info.action = action.handle;
+
+                switch (input::action_type(action.input.component)) {
+                case XR_ACTION_TYPE_BOOLEAN_INPUT: {
+                    auto state = make_struct<XrActionStateBoolean>();
+                    check(xrGetActionStateBoolean(service_.session_, &get_info, &state), "xrGetActionStateBoolean");
+                    action_state.active = state.isActive == XR_TRUE;
+                    action_state.changed = state.changedSinceLastSync == XR_TRUE;
+                    if (action_state.active) {
+                        action_state.state = state.currentState == XR_TRUE;
+                    }
+                    break;
+                }
+                case XR_ACTION_TYPE_FLOAT_INPUT: {
+                    auto state = make_struct<XrActionStateFloat>();
+                    check(xrGetActionStateFloat(service_.session_, &get_info, &state), "xrGetActionStateFloat");
+                    action_state.active = state.isActive == XR_TRUE;
+                    action_state.changed = state.changedSinceLastSync == XR_TRUE;
+                    if (action_state.active) {
+                        action_state.state = state.currentState;
+                    }
+                    break;
+                }
+                case XR_ACTION_TYPE_VECTOR2F_INPUT: {
+                    auto state = make_struct<XrActionStateVector2f>();
+                    check(xrGetActionStateVector2f(service_.session_, &get_info, &state), "xrGetActionStateVector2f");
+                    action_state.active = state.isActive == XR_TRUE;
+                    action_state.changed = state.changedSinceLastSync == XR_TRUE;
+                    if (action_state.active) {
+                        action_state.state = glm::vec2{state.currentState.x, state.currentState.y};
+                    }
+                    break;
+                }
+                case XR_ACTION_TYPE_POSE_INPUT: {
+                    auto state = make_struct<XrActionStatePose>();
+                    check(xrGetActionStatePose(service_.session_, &get_info, &state), "xrGetActionStatePose");
+                    action_state.active = state.isActive == XR_TRUE;
+                    if (action_state.active) {
+                        const auto location = locate_space(service_.session_context_.action_spaces.at(name), service_.session_context_.base_space, display_time);
+                        const XrSpaceLocationFlags required = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
+                        action_state.active = (location.locationFlags & required) == required;
+                        if (action_state.active) {
+                            action_state.state = to_pose(location.pose);
+                        }
+                    }
+                    break;
+                }
+                case XR_ACTION_TYPE_VIBRATION_OUTPUT:
+                case XR_ACTION_TYPE_MAX_ENUM:
+                    break;
+                }
+            }
+
+            for (const auto &vibration : service_.renderer_.set(*binding.state)) {
+                const auto action = binding.actions.find(vibration.action);
+                if (action == binding.actions.end()) {
+                    spdlog::warn("Renderer requested unknown haptic action '{}' from action set '{}'", vibration.action, binding.state->name);
+                    continue;
+                }
+                auto action_info = make_struct<XrHapticActionInfo>();
+                action_info.action = action->second.handle;
+                auto haptic = make_struct<XrHapticVibration>();
+                haptic.duration = vibration.duration;
+                haptic.frequency = vibration.frequency;
+                haptic.amplitude = vibration.amplitude;
+                check(xrApplyHapticFeedback(service_.session_, &action_info, reinterpret_cast<const XrHapticBaseHeader *>(&haptic)), "xrApplyHapticFeedback");
+            }
+        }
     }
 
     void stopping_state::enter() {

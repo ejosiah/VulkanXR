@@ -57,6 +57,8 @@ namespace vxr::session {
         void end_frame() override;
 
       protected:
+        virtual void process_actions(XrTime display_time);
+
         virtual void render_frame(const frame_info &frame, layers &composition_layers);
 
       private:
@@ -95,6 +97,9 @@ namespace vxr::session {
     class focused_state final : public running_state {
       public:
         using running_state::running_state;
+
+      protected:
+        void process_actions(XrTime display_time) override;
     };
 
     class stopping_state final : public state {
@@ -155,6 +160,7 @@ namespace vxr::session {
         friend class running_state;
         friend class ready_state;
         friend class visible_state;
+        friend class focused_state;
         friend class stopping_state;
 
         void create_session();

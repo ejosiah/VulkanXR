@@ -7,6 +7,7 @@
 #include <vxr/transforms.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,6 +55,18 @@ namespace vxr {
       protected:
         [[nodiscard]] vkz::device &device() const noexcept {
             return xr_context_.device();
+        }
+
+        [[nodiscard]] vkz::context &vulkan_context() const noexcept {
+            return xr_context_.vulkan_context();
+        }
+
+        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
+            return xr_context_.graphics_queue_family();
+        }
+
+        [[nodiscard]] VkQueue graphics_queue() const noexcept {
+            return xr_context_.graphics_queue();
         }
 
         [[nodiscard]] swapchain &get_swapchain(const std::string &name) {

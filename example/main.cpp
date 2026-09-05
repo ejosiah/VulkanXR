@@ -1,6 +1,6 @@
 #include <vxr/vxr.hpp>
 
-#include "checkerboard_renderer.hpp"
+#include "space_visualization_renderer.hpp"
 
 #include <spdlog/spdlog.h>
 
@@ -12,12 +12,12 @@ int main() {
 
     auto context_builder = vxr::context::create();
     context_builder
-        .app_name("VulkanXR Checkerboard")
+        .app_name("VulkanXR Space Visualization")
         .vulkan_api_version(VK_API_VERSION_1_2)
         .openxr_api_version(XR_API_VERSION_1_0);
 
-    auto session_config = checkerboard_renderer::session_config();
-    vxr::application application{context_builder, session_config, checkerboard_renderer::create};
+    auto session_config = space_visualization_renderer::session_config();
+    vxr::application application{context_builder, session_config, space_visualization_renderer::create};
     application.run();
     return EXIT_SUCCESS;
 }

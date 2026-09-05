@@ -25,12 +25,12 @@ find_package(spdlog CONFIG REQUIRED)
 find_package(OPENXR 1.1.62 CONFIG REQUIRED)
 
 file(GLOB_RECURSE VULKANXR_SHADER_FILES CONFIGURE_DEPENDS
-    "${CMAKE_CURRENT_SOURCE_DIR}/shaders/*"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders/*"
 )
 cmrc_add_resource_library(vulkanxr_shaders
     ALIAS VulkanXR::shaders
     NAMESPACE vxr_shaders
-    WHENCE "${CMAKE_CURRENT_SOURCE_DIR}/shaders"
+    WHENCE "${CMAKE_CURRENT_SOURCE_DIR}/src/shaders"
     ${VULKANXR_SHADER_FILES}
 )
 
@@ -89,10 +89,13 @@ if(VULKANXR_BUILD_EXAMPLES)
         example/main.cpp
         example/checkerboard_renderer.cpp
         example/checkerboard_renderer.hpp
+        example/space_visualization_renderer.cpp
+        example/space_visualization_renderer.hpp
     )
     target_link_libraries(vulkanxr_example
         PRIVATE
             VulkanXR::VulkanXR
+            VulkanXR::shaders
             spdlog::spdlog
     )
     add_subdirectory(openxr_info)
