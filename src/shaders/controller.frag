@@ -77,10 +77,12 @@ void main() {
         character_index++;
     }
 
-    uint ascii = 32u;
+    uint encoded_character = 32u;
     if (character_index < text.character_count && current_row == row && current_column == column) {
-        ascii = text.characters[character_index];
+        encoded_character = text.characters[character_index];
     }
+    const uint ascii = encoded_character & 0xffu;
     const ivec2 glyph_pixel = ivec2((text_pixel.x % 16) / 2, (text_pixel.y % 16) / 2);
-    output_color = font_lookup(ascii, glyph_pixel) ? vec4(0.35, 0.95, 0.75, 1.0) : vec4(0.02, 0.03, 0.05, 1.0);
+    const vec4 text_color = (encoded_character & 0x100u) != 0u ? vec4(1.0, 0.85, 0.15, 1.0) : vec4(0.35, 0.95, 0.75, 1.0);
+    output_color = font_lookup(ascii, glyph_pixel) ? text_color : vec4(0.02, 0.03, 0.05, 1.0);
 }

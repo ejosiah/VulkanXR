@@ -61,5 +61,6 @@ class controller_renderer final : public vxr::renderer {
     VkRenderPass render_pass_{VK_NULL_HANDLE};
     XrCompositionLayerQuad layer_{};
     std::array<glm::vec2, 2> trackpad_positions_{};
+    std::array<glm::vec2, 2> thumbstick_positions_{};
     std::deque<std::string> action_history_;
 };

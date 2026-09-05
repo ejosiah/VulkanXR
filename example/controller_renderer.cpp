@@ -7,6 +7,7 @@
 #include <vulkanizer/status.hpp>
 
 #include <cmrc/cmrc.hpp>
+#include <fmt/format.h>
 #include <glm/geometric.hpp>
 #include <spdlog/spdlog.h>
 
@@ -123,6 +124,17 @@ std::vector<vxr::vibration> controller_renderer::set(const vxr::action_set &acti
             trackpad_positions_[hand].x = action.value<float>();
         } else if (name.ends_with("trackpad_y")) {
             trackpad_positions_[hand].y = action.value<float>();
+        } else if (name.ends_with("thumbstick_x")) {
+            thumbstick_positions_[hand].x = action.value<float>();
+        } else if (name.ends_with("thumbstick_y")) {
+            thumbstick_positions_[hand].y = action.value<float>();
+        }
+        if (action.changed && name.find("thumbstick") != std::string::npos) {
+            action_history_.push_front(fmt::format("{}/input/thumbstick/{} -> XR_ACTION_TYPE_FLOAT_INPUT ({:.2f})", hand == 0 ? "/user/hand/left" : "/user/hand/right",
+                                                   name.ends_with("thumbstick_x") ? "x" : "y", action.value<float>()));
+            if (action_history_.size() > 5) {
+                action_history_.pop_back();
+            }
         }
     }
 
@@ -132,10 +144,20 @@ std::vector<vxr::vibration> controller_renderer::set(const vxr::action_set &acti
         std::string control;
         if (name.find("trackpad") != std::string::npos) {
             control = "trackpad/" + trackpad_region(trackpad_positions_[left ? 0 : 1]) + "/click";
+        } else if (name.find("thumbstick") != std::string::npos) {
+            control = "thumbstick/click";
         } else if (name.find("squeeze") != std::string::npos) {
             control = "squeeze/click";
         } else if (name.find("trigger") != std::string::npos) {
             control = "trigger/click";
+        } else if (name.find("_a_click") != std::string::npos) {
+            control = "a/click";
+        } else if (name.find("_b_click") != std::string::npos) {
+            control = "b/click";
+        } else if (name.find("_x_click") != std::string::npos) {
+            control = "x/click";
+        } else if (name.find("_y_click") != std::string::npos) {
+            control = "y/click";
         } else {
             control = "menu/click";
         }
@@ -185,6 +207,16 @@ vxr::session::config controller_renderer::session_config() {
                 .add_action("right_trackpad_x", vxr::input::location::right_hand, vxr::input::identifier::track_pad, vxr::input::component::x, "Right trackpad X")
                 .add_action("right_trackpad_y", vxr::input::location::right_hand, vxr::input::identifier::track_pad, vxr::input::component::y, "Right trackpad Y")
                 .add_action("right_trackpad_click", vxr::input::location::right_hand, vxr::input::identifier::track_pad, vxr::input::component::click, "Right trackpad click")
+                .add_action("left_x_click", vxr::input::location::left_hand, vxr::input::identifier::x, vxr::input::component::click, "Left X")
+                .add_action("left_y_click", vxr::input::location::left_hand, vxr::input::identifier::y, vxr::input::component::click, "Left Y")
+                .add_action("right_a_click", vxr::input::location::right_hand, vxr::input::identifier::a, vxr::input::component::click, "Right A")
+                .add_action("right_b_click", vxr::input::location::right_hand, vxr::input::identifier::b, vxr::input::component::click, "Right B")
+                .add_action("left_thumbstick_x", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Left thumbstick X")
+                .add_action("left_thumbstick_y", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Left thumbstick Y")
+                .add_action("left_thumbstick_click", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Left thumbstick click")
+                .add_action("right_thumbstick_x", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Right thumbstick X")
+                .add_action("right_thumbstick_y", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Right thumbstick Y")
+                .add_action("right_thumbstick_click", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Right thumbstick click")
         )
         .add_swapchain(
             vxr::swapchain_create_info{}
@@ -206,12 +238,19 @@ void controller_renderer::update_text() {
     for (const auto &action : action_history_) {
         history += action + "\n";
     }
-    const std::string text = "CONTROLLER INPUT TEST\n\nLeft profile:  " + profile(vxr::input::location::left_hand) + "\nRight profile: " + profile(vxr::input::location::right_hand) + "\n\nLast 5 actions:\n" + history;
+    const std::string prefix = "CONTROLLER INPUT TEST\n\nLeft profile:  " + profile(vxr::input::location::left_hand) + "\nRight profile: " + profile(vxr::input::location::right_hand) + "\n\nLast 5 actions:\n";
+    const std::string text = prefix + history;
     auto &buffer = *text_mapping_.as<text_buffer>();
     buffer = {};
     buffer.character_count = static_cast<std::uint32_t>(std::min(text.size(), std::size(buffer.characters)));
     for (std::uint32_t index = 0; index < buffer.character_count; ++index) {
         buffer.characters[index] = static_cast<unsigned char>(text[index]);
+    }
+    if (!action_history_.empty()) {
+        const auto highlight_end = std::min(prefix.size() + action_history_.front().size(), static_cast<std::size_t>(buffer.character_count));
+        for (std::size_t index = prefix.size(); index < highlight_end; ++index) {
+            buffer.characters[index] |= 0x100u;
+        }
     }
 }
 
