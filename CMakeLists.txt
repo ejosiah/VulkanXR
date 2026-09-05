@@ -56,6 +56,7 @@ add_library(vulkanxr STATIC
     src/vulkanxr.cpp
     src/extension_dispatch.cpp
     src/context.cpp
+    src/input.cpp
     src/session_service.cpp
     src/swapchain.cpp
 )

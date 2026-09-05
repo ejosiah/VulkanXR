@@ -8,10 +8,22 @@
 #include <openxr/openxr.h>
 
 #include <map>
+#include <vector>
 
 namespace vxr::session {
 
     class service;
+
+    struct action_data {
+        input::binding input;
+        XrAction handle{XR_NULL_HANDLE};
+    };
+
+    struct action_set_binding {
+        XrActionSet handle{XR_NULL_HANDLE};
+        action_set *state{};
+        std::map<std::string, action_data> actions;
+    };
 
     class state {
       public:
@@ -153,12 +165,17 @@ namespace vxr::session {
 
         void create_base_reference_space();
 
+        void setup_actions();
+
+        void bind_actions(const input::interaction_profile &profile);
+
         vxr::context &xr_context_;
         context &session_context_;
         const config &configuration_;
         renderer &renderer_;
         XrSession session_{XR_NULL_HANDLE};
         bool termination_requested_{};
+        std::vector<action_set_binding> action_set_bindings_;
         state unknown_state_;
         idle_state idle_state_;
         ready_state ready_state_;

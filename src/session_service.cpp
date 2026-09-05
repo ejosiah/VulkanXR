@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstring>
 #include <thread>
 #include <utility>
 
@@ -21,11 +22,26 @@ namespace vxr::session {
         create_reference_spaces();
         create_swapchains();
         create_base_reference_space();
+        setup_actions();
         renderer_.init();
     }
 
     void service::destroy() noexcept {
         renderer_.cleanup();
+        for (const auto &[name, space] : session_context_.action_spaces) {
+            if (space != XR_NULL_HANDLE) {
+                xrDestroySpace(space);
+            }
+        }
+        session_context_.action_spaces.clear();
+        for (const auto &binding : action_set_bindings_) {
+            if (binding.handle != XR_NULL_HANDLE) {
+                xrDestroyActionSet(binding.handle);
+            }
+        }
+        action_set_bindings_.clear();
+        session_context_.action_sets.clear();
+        session_context_.active_action_sets.clear();
         for (auto &[name, swapchain] : session_context_.swapchains) {
             swapchain.destroy();
         }
@@ -101,6 +117,86 @@ namespace vxr::session {
         create_info.referenceSpaceType = configuration_.base_space_type;
         create_info.poseInReferenceSpace.orientation.w = 1.0F;
         check(xrCreateReferenceSpace(session_, &create_info, &session_context_.base_space), "xrCreateReferenceSpace base space");
+    }
+
+    void service::setup_actions() {
+        if (configuration_.action_sets.empty()) {
+            spdlog::info("No OpenXR action sets to configure");
+            return;
+        }
+
+        std::vector<XrActionSet> handles;
+        handles.reserve(configuration_.action_sets.size());
+        for (const auto &specification : configuration_.action_sets) {
+            auto create_info = make_struct<XrActionSetCreateInfo>();
+            std::strncpy(create_info.actionSetName, specification.name_.c_str(), XR_MAX_ACTION_SET_NAME_SIZE - 1);
+            const auto &description = specification.description_.empty() ? specification.name_ : specification.description_;
+            std::strncpy(create_info.localizedActionSetName, description.c_str(), XR_MAX_LOCALIZED_ACTION_SET_NAME_SIZE - 1);
+
+            XrActionSet handle{XR_NULL_HANDLE};
+            check(xr_context_.instance(), xrCreateActionSet(xr_context_.instance(), &create_info, &handle), "xrCreateActionSet");
+            handles.push_back(handle);
+
+            auto &[name, state] = *session_context_.action_sets.try_emplace(specification.name_, action_set{specification.name_}).first;
+            action_set_bindings_.push_back({handle, &state, {}});
+            auto &binding = action_set_bindings_.back();
+
+            for (const auto &action_specification : specification.actions) {
+                auto action_info = make_struct<XrActionCreateInfo>();
+                std::strncpy(action_info.actionName, action_specification.name.c_str(), XR_MAX_ACTION_NAME_SIZE - 1);
+                std::strncpy(action_info.localizedActionName, action_specification.description.c_str(), XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
+                action_info.actionType = input::action_type(action_specification.input.component);
+
+                XrAction action_handle{XR_NULL_HANDLE};
+                check(xr_context_.instance(), xrCreateAction(handle, &action_info, &action_handle), "xrCreateAction");
+                binding.actions.emplace(action_specification.name, action_data{action_specification.input, action_handle});
+                state.actions.emplace(action_specification.name, action{action_specification.name});
+
+                if (action_info.actionType == XR_ACTION_TYPE_POSE_INPUT) {
+                    auto space_info = make_struct<XrActionSpaceCreateInfo>();
+                    space_info.action = action_handle;
+                    space_info.poseInActionSpace.orientation.w = 1.0F;
+                    XrSpace space{XR_NULL_HANDLE};
+                    check(xr_context_.instance(), xrCreateActionSpace(session_, &space_info, &space), "xrCreateActionSpace");
+                    session_context_.action_spaces.emplace(action_specification.name, space);
+                }
+            }
+        }
+
+        if (renderer_.active_action_sets() == "*") {
+            for (const XrActionSet handle : handles) {
+                session_context_.active_action_sets.push_back({handle, XR_NULL_PATH});
+            }
+        }
+
+        bind_actions(input::interaction_profile::oculus_touch_controller());
+
+        auto attach_info = make_struct<XrSessionActionSetsAttachInfo>();
+        attach_info.countActionSets = static_cast<std::uint32_t>(handles.size());
+        attach_info.actionSets = handles.data();
+        check(xr_context_.instance(), xrAttachSessionActionSets(session_, &attach_info), "xrAttachSessionActionSets");
+    }
+
+    void service::bind_actions(const input::interaction_profile &profile) {
+        std::vector<XrActionSuggestedBinding> suggested_bindings;
+        for (const auto &action_set_binding : action_set_bindings_) {
+            for (const auto &[name, action] : action_set_binding.actions) {
+                const auto path = profile.path(action.input);
+                if (!path) continue;
+                XrPath binding_path{XR_NULL_PATH};
+                check(xr_context_.instance(), xrStringToPath(xr_context_.instance(), path->c_str(), &binding_path), "xrStringToPath action binding");
+                suggested_bindings.push_back({action.handle, binding_path});
+            }
+        }
+
+        XrPath profile_path{XR_NULL_PATH};
+        const std::string profile_name = profile.profile();
+        check(xr_context_.instance(), xrStringToPath(xr_context_.instance(), profile_name.c_str(), &profile_path), "xrStringToPath interaction profile");
+        auto suggested_binding_info = make_struct<XrInteractionProfileSuggestedBinding>();
+        suggested_binding_info.interactionProfile = profile_path;
+        suggested_binding_info.countSuggestedBindings = static_cast<std::uint32_t>(suggested_bindings.size());
+        suggested_binding_info.suggestedBindings = suggested_bindings.data();
+        check(xr_context_.instance(), xrSuggestInteractionProfileBindings(xr_context_.instance(), &suggested_binding_info), "xrSuggestInteractionProfileBindings");
     }
 
     void running_state::process_frame() {

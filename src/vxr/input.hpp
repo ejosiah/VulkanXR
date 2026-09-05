@@ -1,5 +1,11 @@
 #pragma once
 
+#include <openxr/openxr.h>
+
+#include <optional>
+#include <stdexcept>
+#include <string>
+
 namespace vxr::input {
 
     enum class location {
@@ -55,5 +61,45 @@ namespace vxr::input {
         identifier identifier;
         component component;
     };
+
+    class simple_interaction_profile;
+    class oculus_touch_controller_profile;
+
+    class interaction_profile {
+      public:
+        virtual ~interaction_profile() = default;
+
+        [[nodiscard]] virtual std::string profile() const = 0;
+
+        [[nodiscard]] virtual std::string path(identifier value) const = 0;
+
+        [[nodiscard]] virtual std::optional<std::string> path(const binding &value) const;
+
+        [[nodiscard]] static std::string path(location value);
+
+        [[nodiscard]] static std::string path(component value);
+
+        [[nodiscard]] static simple_interaction_profile simple();
+
+        [[nodiscard]] static oculus_touch_controller_profile oculus_touch_controller();
+    };
+
+    class simple_interaction_profile final : public interaction_profile {
+      public:
+        [[nodiscard]] std::string profile() const override;
+
+        [[nodiscard]] std::string path(identifier value) const override;
+    };
+
+    class oculus_touch_controller_profile final : public interaction_profile {
+      public:
+        [[nodiscard]] std::string profile() const override;
+
+        [[nodiscard]] std::string path(identifier value) const override;
+
+        [[nodiscard]] std::optional<std::string> path(const binding &value) const override;
+    };
+
+    [[nodiscard]] XrActionType action_type(component value);
 
 } // namespace vxr::input
