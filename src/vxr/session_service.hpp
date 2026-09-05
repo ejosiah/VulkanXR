@@ -15,7 +15,7 @@ namespace vxr::session {
     class service;
 
     struct action_data {
-        input::binding input;
+        std::variant<input::binding, output::binding> binding;
         XrAction handle{XR_NULL_HANDLE};
     };
 

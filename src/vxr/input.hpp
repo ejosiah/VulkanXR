@@ -41,8 +41,7 @@ namespace vxr::input {
         squeeze,
         wheel,
         grip,
-        aim,
-        haptic
+        aim
     };
     enum class component {
         click,
@@ -52,8 +51,7 @@ namespace vxr::input {
         x,
         y,
         twist,
-        pose,
-        vibrate
+        pose
     };
 
     struct binding {
@@ -61,6 +59,30 @@ namespace vxr::input {
         identifier identifier;
         component component;
     };
+
+} // namespace vxr::input
+
+namespace vxr::output {
+
+    enum class identifier {
+        haptic
+    };
+
+    enum class component {
+        vibrate
+    };
+
+    struct binding {
+        input::location location;
+        identifier identifier;
+        component component;
+    };
+
+    [[nodiscard]] XrActionType action_type(component value);
+
+} // namespace vxr::output
+
+namespace vxr::input {
 
     class simple_interaction_profile;
     class oculus_touch_controller_profile;
@@ -76,9 +98,15 @@ namespace vxr::input {
 
         [[nodiscard]] virtual std::optional<std::string> path(const binding &value) const;
 
+        [[nodiscard]] std::optional<std::string> path(const output::binding &value) const;
+
         [[nodiscard]] static std::string path(location value);
 
         [[nodiscard]] static std::string path(component value);
+
+        [[nodiscard]] static std::string path(output::identifier value);
+
+        [[nodiscard]] static std::string path(output::component value);
 
         [[nodiscard]] static simple_interaction_profile simple();
 

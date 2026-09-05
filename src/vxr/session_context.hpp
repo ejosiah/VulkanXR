@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vxr/action.hpp>
+#include <vxr/input.hpp>
 #include <vxr/models.hpp>
 #include <vxr/swapchain.hpp>
 
@@ -20,6 +21,7 @@ namespace vxr::session {
         std::map<std::string, action_set> action_sets;
         std::vector<XrActiveActionSet> active_action_sets;
         std::map<std::string, XrSpace> action_spaces;
+        std::map<input::location, std::string> interaction_profiles;
         XrEnvironmentBlendMode blend_mode{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
         std::optional<XrEventDataReferenceSpaceChangePending> reference_space_change;
         bool cube_supported{};

@@ -10,6 +10,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include <variant>
 
 namespace vxr::session {
 
@@ -72,7 +73,7 @@ namespace vxr::session {
     struct action_specification {
         std::string name;
         std::string description;
-        input::binding input;
+        std::variant<input::binding, output::binding> binding;
 
         [[nodiscard]] auto operator<=>(const action_specification &other) const noexcept {
             return name <=> other.name;
@@ -96,7 +97,13 @@ namespace vxr::session {
 
         action_set_specification &add_action(std::string_view action_name, input::location location, input::identifier identifier, input::component component,
                                              std::string_view action_description = {}) {
-            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, {location, identifier, component}});
+            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, input::binding{location, identifier, component}});
+            return *this;
+        }
+
+        action_set_specification &add_action(std::string_view action_name, input::location location, output::identifier identifier, output::component component,
+                                             std::string_view action_description = {}) {
+            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, output::binding{location, identifier, component}});
             return *this;
         }
 

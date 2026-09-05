@@ -10,6 +10,14 @@ namespace vxr::input {
         }
     }
 
+    std::optional<std::string> interaction_profile::path(const output::binding &value) const {
+        try {
+            return path(value.location) + "/" + path(value.identifier) + path(value.component);
+        } catch (...) {
+            return std::nullopt;
+        }
+    }
+
     std::string interaction_profile::path(location value) {
         switch (value) {
         case location::left_hand:
@@ -28,8 +36,6 @@ namespace vxr::input {
 
     std::string interaction_profile::path(component value) {
         switch (value) {
-        case component::vibrate:
-            return "";
         case component::click:
             return "/click";
         case component::touch:
@@ -48,6 +54,22 @@ namespace vxr::input {
             return "/pose";
         }
         throw std::invalid_argument{"Invalid input component"};
+    }
+
+    std::string interaction_profile::path(output::identifier value) {
+        switch (value) {
+        case output::identifier::haptic:
+            return "output/haptic";
+        }
+        throw std::invalid_argument{"Invalid output identifier"};
+    }
+
+    std::string interaction_profile::path(output::component value) {
+        switch (value) {
+        case output::component::vibrate:
+            return "";
+        }
+        throw std::invalid_argument{"Invalid output component"};
     }
 
     simple_interaction_profile interaction_profile::simple() {
@@ -76,8 +98,6 @@ namespace vxr::input {
             return "input/grip";
         case identifier::aim:
             return "input/aim";
-        case identifier::haptic:
-            return "output/haptic";
         default:
             throw std::invalid_argument{"Identifier is not supported by the simple-controller profile"};
         }
@@ -103,6 +123,24 @@ namespace vxr::input {
             } else if (value.identifier == identifier::menu) {
                 return std::nullopt;
             }
+        }
+
+        if ((adjusted.identifier == identifier::trigger || adjusted.identifier == identifier::squeeze) && adjusted.component == component::click) {
+            adjusted.component = component::value;
+        }
+
+        const bool supported =
+            ((adjusted.identifier == identifier::x || adjusted.identifier == identifier::y || adjusted.identifier == identifier::a || adjusted.identifier == identifier::b ||
+              adjusted.identifier == identifier::menu) &&
+             adjusted.component == component::click) ||
+            (adjusted.identifier == identifier::squeeze && adjusted.component == component::value) ||
+            (adjusted.identifier == identifier::trigger && (adjusted.component == component::value || adjusted.component == component::touch)) ||
+            (adjusted.identifier == identifier::thumb_stick &&
+             (adjusted.component == component::x || adjusted.component == component::y || adjusted.component == component::click || adjusted.component == component::touch)) ||
+            (adjusted.identifier == identifier::thumb_rest && adjusted.component == component::touch) || (adjusted.identifier == identifier::grip && adjusted.component == component::pose) ||
+            (adjusted.identifier == identifier::aim && adjusted.component == component::pose);
+        if (!supported) {
+            return std::nullopt;
         }
         return interaction_profile::path(adjusted);
     }
@@ -131,8 +169,6 @@ namespace vxr::input {
             return "input/grip";
         case identifier::aim:
             return "input/aim";
-        case identifier::haptic:
-            return "output/haptic";
         default:
             throw std::invalid_argument{"Identifier is not supported by the Oculus Touch profile"};
         }
@@ -158,8 +194,6 @@ namespace vxr::input {
             return "input/grip";
         case identifier::aim:
             return "input/aim";
-        case identifier::haptic:
-            return "output/haptic";
         default:
             throw std::invalid_argument{"Identifier is not supported by the HTC Vive Controller profile"};
         }
@@ -183,8 +217,7 @@ namespace vxr::input {
             (value.identifier == identifier::trigger && (value.component == component::click || value.component == component::value)) ||
             (value.identifier == identifier::track_pad &&
              (value.component == component::x || value.component == component::y || value.component == component::click || value.component == component::touch)) ||
-            (value.identifier == identifier::grip && value.component == component::pose) || (value.identifier == identifier::aim && value.component == component::pose) ||
-            (value.identifier == identifier::haptic && value.component == component::vibrate);
+            (value.identifier == identifier::grip && value.component == component::pose) || (value.identifier == identifier::aim && value.component == component::pose);
         if (!supported) {
             return std::nullopt;
         }
@@ -198,17 +231,26 @@ namespace vxr::input {
             return XR_ACTION_TYPE_BOOLEAN_INPUT;
         case component::force:
         case component::value:
-        case component::twist:
-            return XR_ACTION_TYPE_FLOAT_INPUT;
         case component::x:
         case component::y:
-            return XR_ACTION_TYPE_VECTOR2F_INPUT;
+        case component::twist:
+            return XR_ACTION_TYPE_FLOAT_INPUT;
         case component::pose:
             return XR_ACTION_TYPE_POSE_INPUT;
-        case component::vibrate:
-            return XR_ACTION_TYPE_VIBRATION_OUTPUT;
         }
         throw std::invalid_argument{"Invalid input component"};
     }
 
 } // namespace vxr::input
+
+namespace vxr::output {
+
+    XrActionType action_type(component value) {
+        switch (value) {
+        case component::vibrate:
+            return XR_ACTION_TYPE_VIBRATION_OUTPUT;
+        }
+        throw std::invalid_argument{"Invalid output component"};
+    }
+
+} // namespace vxr::output

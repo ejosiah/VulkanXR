@@ -1,5 +1,6 @@
 #include "space_visualization_renderer.hpp"
 
+#include <vxr/vxr.hpp>
 #include <vxr/openxr_helpers.hpp>
 
 #include <vulkanizer/builders.hpp>
@@ -9,10 +10,12 @@
 
 #include <cmrc/cmrc.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -211,8 +214,8 @@ vxr::session::config space_visualization_renderer::session_config() {
                 .add_action("right_hand_pose", vxr::input::location::right_hand, vxr::input::identifier::grip, vxr::input::component::pose, "Right hand grip")
                 .add_action("left_hand_squeeze", vxr::input::location::left_hand, vxr::input::identifier::squeeze, vxr::input::component::value, "Left hand squeeze")
                 .add_action("right_hand_squeeze", vxr::input::location::right_hand, vxr::input::identifier::squeeze, vxr::input::component::value, "Right hand squeeze")
-                .add_action("vibrate_left", vxr::input::location::left_hand, vxr::input::identifier::haptic, vxr::input::component::vibrate, "Vibrate left hand")
-                .add_action("vibrate_right", vxr::input::location::right_hand, vxr::input::identifier::haptic, vxr::input::component::vibrate, "Vibrate right hand")
+                .add_action("vibrate_left", vxr::input::location::left_hand, vxr::output::identifier::haptic, vxr::output::component::vibrate, "Vibrate left hand")
+                .add_action("vibrate_right", vxr::input::location::right_hand, vxr::output::identifier::haptic, vxr::output::component::vibrate, "Vibrate right hand")
         )
         .add_swapchain(
             vxr::swapchain_create_info{}
@@ -464,4 +467,17 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
 
 VkFramebuffer space_visualization_renderer::framebuffer(std::uint32_t color_image, std::uint32_t depth_image, std::uint32_t view_index) const {
     return framebuffers_.at((color_image * depth_image_count_ + depth_image) * 2 + view_index);
+}
+
+int main() {
+    spdlog::info("{} space visualization (Vulkan header version {})", vxr::project_name(), vxr::vulkan_header_version());
+    auto context_builder = vxr::context::create();
+    context_builder
+        .app_name("VulkanXR Space Visualization")
+        .vulkan_api_version(VK_API_VERSION_1_2)
+        .openxr_api_version(XR_API_VERSION_1_0);
+    auto session_config = space_visualization_renderer::session_config();
+    vxr::application application{context_builder, session_config, space_visualization_renderer::create};
+    application.run();
+    return EXIT_SUCCESS;
 }

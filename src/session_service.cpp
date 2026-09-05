@@ -145,11 +145,11 @@ namespace vxr::session {
                 auto action_info = make_struct<XrActionCreateInfo>();
                 std::strncpy(action_info.actionName, action_specification.name.c_str(), XR_MAX_ACTION_NAME_SIZE - 1);
                 std::strncpy(action_info.localizedActionName, action_specification.description.c_str(), XR_MAX_LOCALIZED_ACTION_NAME_SIZE - 1);
-                action_info.actionType = input::action_type(action_specification.input.component);
+                action_info.actionType = std::visit([](const auto &binding) { return action_type(binding.component); }, action_specification.binding);
 
                 XrAction action_handle{XR_NULL_HANDLE};
                 check(xr_context_.instance(), xrCreateAction(handle, &action_info, &action_handle), "xrCreateAction");
-                binding.actions.emplace(action_specification.name, action_data{action_specification.input, action_handle});
+                binding.actions.emplace(action_specification.name, action_data{action_specification.binding, action_handle});
                 state.actions.emplace(action_specification.name, action{action_specification.name});
 
                 if (action_info.actionType == XR_ACTION_TYPE_POSE_INPUT) {
@@ -182,7 +182,7 @@ namespace vxr::session {
         std::vector<XrActionSuggestedBinding> suggested_bindings;
         for (const auto &action_set_binding : action_set_bindings_) {
             for (const auto &[name, action] : action_set_binding.actions) {
-                const auto path = profile.path(action.input);
+                const auto path = std::visit([&](const auto &binding) { return profile.path(binding); }, action.binding);
                 if (!path) continue;
                 XrPath binding_path{XR_NULL_PATH};
                 check(xr_context_.instance(), xrStringToPath(xr_context_.instance(), path->c_str(), &binding_path), "xrStringToPath action binding");
@@ -333,6 +333,24 @@ namespace vxr::session {
         sync_info.activeActionSets = active_action_sets.data();
         check(xrSyncActions(service_.session_, &sync_info), "xrSyncActions");
 
+        for (const auto location : {input::location::left_hand, input::location::right_hand}) {
+            XrPath user_path{XR_NULL_PATH};
+            const auto path = input::interaction_profile::path(location);
+            check(service_.xr_context_.instance(), xrStringToPath(service_.xr_context_.instance(), path.c_str(), &user_path), "xrStringToPath user path");
+            auto profile = make_struct<XrInteractionProfileState>();
+            check(service_.xr_context_.instance(), xrGetCurrentInteractionProfile(service_.session_, user_path, &profile), "xrGetCurrentInteractionProfile");
+            if (profile.interactionProfile == XR_NULL_PATH) {
+                service_.session_context_.interaction_profiles[location] = "No active interaction profile";
+                continue;
+            }
+            std::uint32_t size{};
+            check(service_.xr_context_.instance(), xrPathToString(service_.xr_context_.instance(), profile.interactionProfile, 0, &size, nullptr), "xrPathToString profile size");
+            std::string profile_name(size, '\0');
+            check(service_.xr_context_.instance(), xrPathToString(service_.xr_context_.instance(), profile.interactionProfile, size, &size, profile_name.data()), "xrPathToString profile");
+            profile_name.resize(size - 1);
+            service_.session_context_.interaction_profiles[location] = std::move(profile_name);
+        }
+
         for (auto &binding : service_.action_set_bindings_) {
             const auto active = std::ranges::find(active_action_sets, binding.handle, &XrActiveActionSet::actionSet);
             if (active == active_action_sets.end()) continue;
@@ -347,7 +365,8 @@ namespace vxr::session {
                 auto get_info = make_struct<XrActionStateGetInfo>();
                 get_info.action = action.handle;
 
-                switch (input::action_type(action.input.component)) {
+                const XrActionType type = std::visit([](const auto &binding) { return action_type(binding.component); }, action.binding);
+                switch (type) {
                 case XR_ACTION_TYPE_BOOLEAN_INPUT: {
                     auto state = make_struct<XrActionStateBoolean>();
                     check(xrGetActionStateBoolean(service_.session_, &get_info, &state), "xrGetActionStateBoolean");
