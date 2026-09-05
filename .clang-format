@@ -5,3 +5,12 @@ NamespaceIndentation: All
 FixNamespaceComments: true
 SeparateDefinitionBlocks: Always
 SortIncludes: Never
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+AllowShortFunctionsOnASingleLine: None
+AllowShortLambdasOnASingleLine: None
+AllowShortLoopsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: WithoutElse
+# Project rule: if and if/else bodies always use braces, except a single continue or break may remain on the same line.
+# Project rule: content within braces always starts on the following line.
+# Project rule: DSL builder chains are vertically formatted, with every nested expression and chained call indented on its own line.

@@ -1,0 +1,219 @@
+#include <vxr/session_service.hpp>
+
+#include <vxr/openxr_helpers.hpp>
+#include <vxr/status.hpp>
+
+#include <algorithm>
+#include <chrono>
+#include <thread>
+#include <utility>
+
+namespace vxr::session {
+
+    void service::init() {
+        configuration_.validate();
+        create_session();
+        create_reference_spaces();
+        create_swapchains();
+        create_base_reference_space();
+        renderer_.init();
+    }
+
+    void service::destroy() noexcept {
+        renderer_.cleanup();
+        for (auto &[name, swapchain] : session_context_.swapchains) {
+            swapchain.destroy();
+        }
+        session_context_.swapchains.clear();
+        for (const auto &[name, space] : session_context_.spaces) {
+            if (space != XR_NULL_HANDLE) {
+                xrDestroySpace(space);
+            }
+        }
+        session_context_.spaces.clear();
+        if (session_context_.base_space != XR_NULL_HANDLE) {
+            xrDestroySpace(session_context_.base_space);
+        }
+        session_context_.base_space = XR_NULL_HANDLE;
+        if (session_ != XR_NULL_HANDLE) {
+            xrDestroySession(session_);
+        }
+        session_ = XR_NULL_HANDLE;
+        session_context_.state = XR_SESSION_STATE_UNKNOWN;
+    }
+
+    void service::handle(const XrEventDataSessionStateChanged &event) {
+        session_context_.state = event.state;
+        states_.at(event.state)->enter();
+    }
+
+    void service::handle(const XrEventDataReferenceSpaceChangePending &event) {
+        session_context_.reference_space_change = event;
+    }
+
+    void service::process_frame() {
+        states_.at(session_context_.state)->process_frame();
+        if (termination_requested_) {
+            session_context_.state = XR_SESSION_STATE_EXITING;
+        }
+    }
+
+    void service::create_session() {
+        auto graphics_binding = xr_context_.graphics_binding();
+        auto create_info = make_struct<XrSessionCreateInfo>();
+        create_info.next = &graphics_binding;
+        create_info.systemId = xr_context_.system_id();
+        check(xrCreateSession(xr_context_.instance(), &create_info, &session_), "xrCreateSession");
+    }
+
+    void service::create_reference_spaces() {
+        for (const auto &specification : configuration_.spaces) {
+            auto create_info = make_struct<XrReferenceSpaceCreateInfo>();
+            create_info.referenceSpaceType = specification.type;
+            create_info.poseInReferenceSpace = to_xr_pose(specification.pose_in_reference_space);
+            XrSpace space{XR_NULL_HANDLE};
+            check(xrCreateReferenceSpace(session_, &create_info, &space), "xrCreateReferenceSpace");
+            session_context_.spaces.emplace(specification.name_, space);
+        }
+    }
+
+    void service::create_swapchains() {
+        const auto formats = enumerate<std::int64_t>(xrEnumerateSwapchainFormats, session_);
+        for (const auto &specification : configuration_.swapchains) {
+            if (std::ranges::find(formats, static_cast<std::int64_t>(specification.format_)) == formats.end()) {
+                throw std::runtime_error{"The requested OpenXR swapchain format is unsupported"};
+            }
+            session_context_.swapchains.try_emplace(specification.name_, session_, specification);
+        }
+    }
+
+    void service::create_base_reference_space() {
+        auto create_info = make_struct<XrReferenceSpaceCreateInfo>();
+        create_info.referenceSpaceType = configuration_.base_space_type;
+        create_info.poseInReferenceSpace.orientation.w = 1.0F;
+        check(xrCreateReferenceSpace(session_, &create_info, &session_context_.base_space), "xrCreateReferenceSpace base space");
+    }
+
+    void running_state::process_frame() {
+        auto frame_state = make_struct<XrFrameState>();
+        auto wait_info = make_struct<XrFrameWaitInfo>();
+        check(xrWaitFrame(service_.session_, &wait_info, &frame_state), "xrWaitFrame");
+        auto begin_info = make_struct<XrFrameBeginInfo>();
+        check(xrBeginFrame(service_.session_, &begin_info), "xrBeginFrame");
+        layers composition_layers;
+        if (frame_state.shouldRender == XR_TRUE) {
+            begin_frame();
+            update_space_locations(service_.session_context_.base_space, frame_state.predictedDisplayTime);
+            service_.session_context_.views = locate_views(service_.session_context_.base_space, frame_state.predictedDisplayTime).views;
+            view_info views{make_struct<XrViewState>(), service_.session_context_.views};
+
+            for (auto &[name, swapchain] : service_.session_context_.swapchains) {
+                if (!swapchain.create_info().render_) continue;
+                auto acquire_info = make_struct<XrSwapchainImageAcquireInfo>();
+                std::uint32_t image_index{};
+                check(xrAcquireSwapchainImage(swapchain.handle(), &acquire_info, &image_index), "xrAcquireSwapchainImage");
+                auto image_wait_info = make_struct<XrSwapchainImageWaitInfo>();
+                image_wait_info.timeout = XR_INFINITE_DURATION;
+                check(xrWaitSwapchainImage(swapchain.handle(), &image_wait_info), "xrWaitSwapchainImage");
+
+                std::optional<image_id> depth_image;
+                vxr::swapchain *depth_swapchain{};
+                if (!swapchain.create_info().depth_.empty()) {
+                    depth_swapchain = &service_.session_context_.swapchains.at(swapchain.create_info().depth_);
+                    std::uint32_t depth_image_index{};
+                    check(xrAcquireSwapchainImage(depth_swapchain->handle(), &acquire_info, &depth_image_index), "xrAcquireSwapchainImage depth");
+                    check(xrWaitSwapchainImage(depth_swapchain->handle(), &image_wait_info), "xrWaitSwapchainImage depth");
+                    depth_image = image_id{depth_swapchain->handle(), depth_image_index};
+                }
+
+                render_frame({{swapchain.handle(), image_index}, views, service_.session_context_.base_space, frame_state.predictedDisplayTime, frame_state.predictedDisplayPeriod, depth_image},
+                             composition_layers);
+
+                auto release_info = make_struct<XrSwapchainImageReleaseInfo>();
+                if (depth_swapchain) {
+                    check(xrReleaseSwapchainImage(depth_swapchain->handle(), &release_info), "xrReleaseSwapchainImage depth");
+                }
+                check(xrReleaseSwapchainImage(swapchain.handle(), &release_info), "xrReleaseSwapchainImage");
+            }
+            end_frame();
+        }
+
+        std::ranges::sort(composition_layers, {}, &layer::position);
+        std::vector<XrCompositionLayerBaseHeader *> headers;
+        headers.reserve(composition_layers.size());
+        for (const auto &entry : composition_layers) {
+            std::visit(
+                [&](auto *value) {
+                    value->space = service_.session_context_.base_space;
+                    headers.push_back(reinterpret_cast<XrCompositionLayerBaseHeader *>(value));
+                },
+                entry.value);
+        }
+
+        auto end_info = make_struct<XrFrameEndInfo>();
+        end_info.displayTime = frame_state.predictedDisplayTime;
+        end_info.environmentBlendMode = service_.session_context_.blend_mode;
+        end_info.layerCount = static_cast<std::uint32_t>(headers.size());
+        end_info.layers = headers.data();
+        check(xrEndFrame(service_.session_, &end_info), "xrEndFrame");
+    }
+
+    void running_state::begin_frame() {
+        service_.renderer_.begin_frame();
+    }
+
+    void running_state::end_frame() {
+        service_.renderer_.end_frame();
+    }
+
+    void running_state::render_frame(const frame_info &frame, layers &composition_layers) {
+        service_.renderer_.render(frame, composition_layers);
+    }
+
+    view_info running_state::locate_views(XrSpace base_space, XrTime display_time) const {
+        auto state = make_struct<XrViewState>();
+        auto locate_info = make_struct<XrViewLocateInfo>();
+        locate_info.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        locate_info.displayTime = display_time;
+        locate_info.space = base_space;
+        return {state, vxr::locate_views(service_.session_, locate_info, state)};
+    }
+
+    void running_state::update_space_locations(XrSpace base_space, XrTime display_time) const {
+        std::vector<space_location> locations;
+        for (const auto &[name, space] : service_.session_context_.spaces) {
+            const auto location = locate_space(space, base_space, display_time);
+            const XrSpaceLocationFlags required = XR_SPACE_LOCATION_ORIENTATION_VALID_BIT | XR_SPACE_LOCATION_POSITION_VALID_BIT;
+            if ((location.locationFlags & required) == required) {
+                locations.push_back({name, to_pose(location.pose)});
+            }
+        }
+        if (!locations.empty()) {
+            service_.renderer_.set(locations);
+        }
+    }
+
+    void idle_state::process_frame() {
+        using namespace std::chrono_literals;
+        std::this_thread::sleep_for(10ms);
+    }
+
+    void ready_state::enter() {
+        const auto configurations = enumerate<XrViewConfigurationType>(xrEnumerateViewConfigurations, service_.xr_context_.instance(), service_.xr_context_.system_id());
+        if (std::ranges::find(configurations, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO) == configurations.end()) {
+            throw std::runtime_error{"The OpenXR runtime does not support primary stereo views"};
+        }
+        auto begin_info = make_struct<XrSessionBeginInfo>();
+        begin_info.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+        check(xrBeginSession(service_.session_, &begin_info), "xrBeginSession");
+    }
+
+    void visible_state::render_frame(const frame_info &frame, layers &composition_layers) {
+        service_.renderer_.paused(frame, composition_layers);
+    }
+
+    void stopping_state::enter() {
+        check(xrEndSession(service_.session_), "xrEndSession");
+    }
+
+} // namespace vxr::session

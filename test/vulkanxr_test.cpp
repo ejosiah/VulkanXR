@@ -1,4 +1,4 @@
-#include <vxr/vulkanxr.hpp>
+#include <vxr/vxr.hpp>
 
 #include <cassert>
 #include <type_traits>

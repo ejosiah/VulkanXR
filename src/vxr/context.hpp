@@ -28,28 +28,56 @@ namespace vxr {
 
         [[nodiscard]] static builder create();
 
-        [[nodiscard]] XrInstance instance() const noexcept { return instance_; }
+        [[nodiscard]] XrInstance instance() const noexcept {
+            return instance_;
+        }
 
-        [[nodiscard]] XrSystemId system_id() const noexcept { return system_id_; }
+        [[nodiscard]] XrSystemId system_id() const noexcept {
+            return system_id_;
+        }
 
-        [[nodiscard]] VkInstance vulkan_instance() const noexcept { return vulkan_.instance; }
+        [[nodiscard]] VkInstance vulkan_instance() const noexcept {
+            return vulkan_.instance;
+        }
 
-        [[nodiscard]] VkPhysicalDevice physical_device() const noexcept { return vulkan_.device.physical; }
+        [[nodiscard]] VkPhysicalDevice physical_device() const noexcept {
+            return vulkan_.device.physical;
+        }
 
-        [[nodiscard]] VkDevice device() const noexcept { return vulkan_.device.logical; }
+        [[nodiscard]] vkz::device &device() noexcept {
+            return vulkan_.device;
+        }
 
-        [[nodiscard]] VkSurfaceKHR surface() const noexcept { return vulkan_.surface; }
+        [[nodiscard]] const vkz::device &device() const noexcept {
+            return vulkan_.device;
+        }
 
-        [[nodiscard]] VkDebugUtilsMessengerEXT debug_messenger() const noexcept { return vulkan_.debug_messenger; }
+        [[nodiscard]] VkSurfaceKHR surface() const noexcept {
+            return vulkan_.surface;
+        }
 
-        [[nodiscard]] std::uint32_t vulkan_api_version() const noexcept { return vulkan_.api_version; }
+        [[nodiscard]] VkDebugUtilsMessengerEXT debug_messenger() const noexcept {
+            return vulkan_.debug_messenger;
+        }
+
+        [[nodiscard]] std::uint32_t vulkan_api_version() const noexcept {
+            return vulkan_.api_version;
+        }
+
+        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
+            return graphics_queue_family_;
+        }
+
+        [[nodiscard]] VkQueue graphics_queue() const noexcept {
+            return graphics_queue_;
+        }
 
         [[nodiscard]] XrGraphicsBindingVulkan2KHR graphics_binding() const noexcept;
 
       private:
         friend class builder;
 
-        context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan) noexcept;
+        context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue) noexcept;
 
         void reset() noexcept;
 
@@ -57,6 +85,8 @@ namespace vxr {
         XrSystemId system_id_{XR_NULL_SYSTEM_ID};
         XrDebugUtilsMessengerEXT openxr_debug_messenger_{XR_NULL_HANDLE};
         vkz::context vulkan_{};
+        std::uint32_t graphics_queue_family_{};
+        VkQueue graphics_queue_{VK_NULL_HANDLE};
     };
 
     class context::builder : public vkz::builder {
@@ -65,7 +95,7 @@ namespace vxr {
 
         builder &app_name(const std::string &name);
 
-        builder &api_version(std::uint32_t version);
+        builder &vulkan_api_version(std::uint32_t version);
 
         builder &openxr_api_version(XrVersion version);
 

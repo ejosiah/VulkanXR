@@ -30,9 +30,13 @@ namespace vxr {
         return VXR_CALL(create_debug_utils_messenger_, instance_, &info, &messenger);
     }
 
-    XrResult extension_dispatch::destroy_debug_utils_messenger(XrDebugUtilsMessengerEXT messenger) const { return VXR_CALL(destroy_debug_utils_messenger_, messenger); }
+    XrResult extension_dispatch::destroy_debug_utils_messenger(XrDebugUtilsMessengerEXT messenger) const {
+        return VXR_CALL(destroy_debug_utils_messenger_, messenger);
+    }
 
-    XrResult extension_dispatch::set_debug_utils_object_name(const XrDebugUtilsObjectNameInfoEXT &info) const { return VXR_CALL(set_debug_utils_object_name_, instance_, &info); }
+    XrResult extension_dispatch::set_debug_utils_object_name(const XrDebugUtilsObjectNameInfoEXT &info) const {
+        return VXR_CALL(set_debug_utils_object_name_, instance_, &info);
+    }
 
     XrResult extension_dispatch::submit_debug_utils_message(XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT types,
                                                             const XrDebugUtilsMessengerCallbackDataEXT &data) const {
@@ -43,9 +47,13 @@ namespace vxr {
         return VXR_CALL(session_begin_debug_utils_label_region_, session, &label);
     }
 
-    XrResult extension_dispatch::session_end_debug_utils_label_region(XrSession session) const { return VXR_CALL(session_end_debug_utils_label_region_, session); }
+    XrResult extension_dispatch::session_end_debug_utils_label_region(XrSession session) const {
+        return VXR_CALL(session_end_debug_utils_label_region_, session);
+    }
 
-    XrResult extension_dispatch::session_insert_debug_utils_label(XrSession session, const XrDebugUtilsLabelEXT &label) const { return VXR_CALL(session_insert_debug_utils_label_, session, &label); }
+    XrResult extension_dispatch::session_insert_debug_utils_label(XrSession session, const XrDebugUtilsLabelEXT &label) const {
+        return VXR_CALL(session_insert_debug_utils_label_, session, &label);
+    }
 
     XrResult extension_dispatch::get_vulkan_instance_extensions(XrSystemId system, uint32_t capacity, uint32_t &count, char *extensions) const {
         return VXR_CALL(get_vulkan_instance_extensions_, instance_, system, capacity, &count, extensions);

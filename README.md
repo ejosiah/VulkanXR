@@ -28,3 +28,7 @@ ctest --preset conan-debug
 
 For Release, use `cmake-build-release` and `-s build_type=Release`. The generated
 Conan presets are included by `CMakeUserPresets.json`, matching Vista's layout.
+
+## TODO
+
+- Handle `XrEventDataReferenceSpaceChangePending`: identify the affected reference-space type and retain the event until `changeTime`. Existing `XrSpace` handles remain valid and must not be recreated. When `poseValid` is `XR_TRUE`, use `poseInPreviousSpace` to preserve continuity for world-locked content; otherwise reset or re-anchor content whose previous-to-new origin relationship cannot be determined.

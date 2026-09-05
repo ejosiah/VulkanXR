@@ -10,7 +10,9 @@ namespace vxr {
       public:
         explicit extension_dispatch(XrInstance instance);
 
-        [[nodiscard]] XrInstance instance() const noexcept { return instance_; }
+        [[nodiscard]] XrInstance instance() const noexcept {
+            return instance_;
+        }
 
         XrResult create_debug_utils_messenger(const XrDebugUtilsMessengerCreateInfoEXT &create_info, XrDebugUtilsMessengerEXT &messenger) const;
 

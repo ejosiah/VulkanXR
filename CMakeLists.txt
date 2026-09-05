@@ -35,14 +35,29 @@ cmrc_add_resource_library(vulkanxr_shaders
 )
 
 add_library(vulkanxr STATIC
-    src/vxr/vulkanxr.hpp
+    src/vxr/application.hpp
+    src/vxr/backoff.hpp
+    src/vxr/action.hpp
+    src/vxr/vxr.hpp
     src/vxr/openxr_helpers.hpp
+    src/vxr/status.hpp
+    src/vxr/renderer.hpp
+    src/vxr/input.hpp
+    src/vxr/session_context.hpp
+    src/vxr/session_config.hpp
+    src/vxr/session_service.hpp
+    src/vxr/swapchain.hpp
     src/vxr/extension_dispatch.hpp
     src/vxr/context.hpp
+    src/vxr/models.hpp
     src/vxr/transforms.hpp
+    src/application.cpp
+    src/backoff.cpp
     src/vulkanxr.cpp
     src/extension_dispatch.cpp
     src/context.cpp
+    src/session_service.cpp
+    src/swapchain.cpp
 )
 add_library(VulkanXR::VulkanXR ALIAS vulkanxr)
 
@@ -61,10 +76,19 @@ target_include_directories(vulkanxr
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
 )
 set_target_properties(vulkanxr PROPERTIES CXX_EXTENSIONS OFF)
-target_compile_definitions(vulkanxr PUBLIC XR_USE_GRAPHICS_API_VULKAN)
+target_compile_definitions(vulkanxr
+    PUBLIC
+        XR_USE_GRAPHICS_API_VULKAN
+    PRIVATE
+        VKZ_SPD_LOG_ADAPTOR
+)
 
 if(VULKANXR_BUILD_EXAMPLES)
-    add_executable(vulkanxr_example example/main.cpp)
+    add_executable(vulkanxr_example
+        example/main.cpp
+        example/checkerboard_renderer.cpp
+        example/checkerboard_renderer.hpp
+    )
     target_link_libraries(vulkanxr_example
         PRIVATE
             VulkanXR::VulkanXR
@@ -80,7 +104,6 @@ if(BUILD_TESTING)
     add_test(NAME vulkanxr.smoke COMMAND vulkanxr_tests)
 
     add_executable(vulkanxr_context_tests test/context_test.cpp)
-    target_compile_definitions(vulkanxr_context_tests PRIVATE VKZ_SPD_LOG_ADAPTOR)
     target_link_libraries(vulkanxr_context_tests PRIVATE VulkanXR::VulkanXR spdlog::spdlog)
     add_test(NAME vulkanxr.context COMMAND vulkanxr_context_tests)
 endif()

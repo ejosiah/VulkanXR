@@ -2,9 +2,11 @@
 
 #include <vxr/extension_dispatch.hpp>
 #include <vxr/openxr_helpers.hpp>
+#include <vxr/status.hpp>
 
 #include <volk.h>
 #include <spdlog/spdlog.h>
+#include <vulkanizer/log.hpp>
 
 #include <algorithm>
 #include <array>
@@ -17,46 +19,40 @@ namespace vxr {
 
     namespace {
 
-        XrBool32 XRAPI_PTR openxr_debug_callback(XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT,
-                                                 const XrDebugUtilsMessengerCallbackDataEXT *data, void *) {
-            if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0)
+        XrBool32 XRAPI_PTR openxr_debug_callback(XrDebugUtilsMessageSeverityFlagsEXT severity, XrDebugUtilsMessageTypeFlagsEXT, const XrDebugUtilsMessengerCallbackDataEXT *data, void *) {
+            if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT) != 0) {
                 spdlog::error("{}: {}", data->functionName, data->message);
-            else if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0)
+            } else if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT) != 0) {
                 spdlog::warn("{}: {}", data->functionName, data->message);
-            else if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) != 0)
+            } else if ((severity & XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT) != 0) {
                 spdlog::info("{}: {}", data->functionName, data->message);
-            else
+            } else {
                 spdlog::debug("{}: {}", data->functionName, data->message);
+            }
             return XR_FALSE;
         }
 
         XrDebugUtilsMessengerCreateInfoEXT openxr_debug_create_info() {
             auto create_info = make_struct<XrDebugUtilsMessengerCreateInfoEXT>();
-            create_info.messageSeverities = XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-                                            XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-            create_info.messageTypes = XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                                       XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT;
+            create_info.messageSeverities = XR_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+                                            XR_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
+            create_info.messageTypes = XR_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | XR_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
+                                       XR_DEBUG_UTILS_MESSAGE_TYPE_CONFORMANCE_BIT_EXT;
             create_info.userCallback = openxr_debug_callback;
             return create_info;
         }
 
-        void check_xr(XrInstance instance, XrResult result, const std::string &operation) {
-            if (XR_FAILED(result))
-                throw openxr_error{operation + ": " + result_to_string(instance, result), result};
-        }
-
         void check_vk(VkResult result, const std::string &operation) {
-            if (result != VK_SUCCESS)
+            if (result != VK_SUCCESS) {
                 throw std::runtime_error{operation + " failed with VkResult " + std::to_string(result)};
+            }
         }
 
         class openxr_device_factory final : public vkz::device_factory {
           public:
-            openxr_device_factory(XrInstance instance, XrSystemId system_id, const extension_dispatch &extensions, std::uint32_t api_version)
-            : instance_{instance}
-            , system_id_{system_id}
-            , extensions_{extensions}
-            , api_version_{api_version} {}
+            openxr_device_factory(XrInstance instance, XrSystemId system_id, const extension_dispatch &extensions, std::uint32_t api_version, std::uint32_t &graphics_queue_family)
+                : instance_{instance}, system_id_{system_id}, extensions_{extensions}, api_version_{api_version}, graphics_queue_family_{graphics_queue_family} {
+            }
 
             VkInstance create_instance() override {
                 check_vk(volkInitialize(), "volkInitialize");
@@ -81,7 +77,7 @@ namespace vxr {
 
                 VkInstance vulkan_instance{};
                 VkResult vulkan_result{};
-                check_xr(instance_, extensions_.create_vulkan_instance(create_info, vulkan_instance, vulkan_result), "xrCreateVulkanInstanceKHR");
+                check(instance_, extensions_.create_vulkan_instance(create_info, vulkan_instance, vulkan_result), "xrCreateVulkanInstanceKHR");
                 check_vk(vulkan_result, "xrCreateVulkanInstanceKHR Vulkan operation");
                 vulkan_instance_ = vulkan_instance;
                 return vulkan_instance;
@@ -93,7 +89,7 @@ namespace vxr {
                 get_info.vulkanInstance = vulkan_instance_;
 
                 VkPhysicalDevice physical_device{};
-                check_xr(instance_, extensions_.get_vulkan_graphics_device(get_info, physical_device), "xrGetVulkanGraphicsDevice2KHR");
+                check(instance_, extensions_.get_vulkan_graphics_device(get_info, physical_device), "xrGetVulkanGraphicsDevice2KHR");
 
                 uint32_t family_count{};
                 vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, nullptr);
@@ -104,10 +100,12 @@ namespace vxr {
                 const auto family = std::find_if(families.begin(), families.end(), [requested_flags](const VkQueueFamilyProperties &properties) {
                     return properties.queueCount > 0 && (properties.queueFlags & requested_flags) == requested_flags;
                 });
-                if (family == families.end())
+                if (family == families.end()) {
                     throw std::runtime_error{"The OpenXR Vulkan device has no compatible queue family"};
+                }
 
                 const uint32_t family_index = static_cast<uint32_t>(std::distance(families.begin(), family));
+                graphics_queue_family_ = family_index;
                 const uint32_t queue_count = std::min(graphics_queue_count(), family->queueCount);
                 std::vector<float> priorities(queue_count, 1.0F);
 
@@ -136,7 +134,7 @@ namespace vxr {
 
                 VkDevice device{};
                 VkResult vulkan_result{};
-                check_xr(instance_, extensions_.create_vulkan_device(create_info, device, vulkan_result), "xrCreateVulkanDeviceKHR");
+                check(instance_, extensions_.create_vulkan_device(create_info, device, vulkan_result), "xrCreateVulkanDeviceKHR");
                 check_vk(vulkan_result, "xrCreateVulkanDeviceKHR Vulkan operation");
                 return {physical_device, device};
             }
@@ -146,35 +144,38 @@ namespace vxr {
             XrSystemId system_id_{};
             const extension_dispatch &extensions_;
             std::uint32_t api_version_{};
+            std::uint32_t &graphics_queue_family_;
             VkInstance vulkan_instance_{};
         };
 
     } // namespace
 
-    context::context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan) noexcept
-    : instance_{instance}
-    , system_id_{system_id}
-    , openxr_debug_messenger_{debug_messenger}
-    , vulkan_{std::move(vulkan)} {}
+    context::context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue) noexcept
+        : instance_{instance}, system_id_{system_id}, openxr_debug_messenger_{debug_messenger}, vulkan_{std::move(vulkan)}, graphics_queue_family_{graphics_queue_family},
+          graphics_queue_{graphics_queue} {
+    }
 
     context::~context() {
         reset();
     }
 
     context::context(context &&other) noexcept
-    : instance_{std::exchange(other.instance_, XR_NULL_HANDLE)}
-    , system_id_{std::exchange(other.system_id_, XR_NULL_SYSTEM_ID)}
-    , openxr_debug_messenger_{std::exchange(other.openxr_debug_messenger_, XR_NULL_HANDLE)}
-    , vulkan_{std::move(other.vulkan_)} {}
+        : instance_{std::exchange(other.instance_, XR_NULL_HANDLE)}, system_id_{std::exchange(other.system_id_, XR_NULL_SYSTEM_ID)},
+          openxr_debug_messenger_{std::exchange(other.openxr_debug_messenger_, XR_NULL_HANDLE)}, vulkan_{std::move(other.vulkan_)}, graphics_queue_family_{other.graphics_queue_family_},
+          graphics_queue_{std::exchange(other.graphics_queue_, VK_NULL_HANDLE)} {
+    }
 
     context &context::operator=(context &&other) noexcept {
-        if (this == &other)
+        if (this == &other) {
             return *this;
+        }
         reset();
         instance_ = std::exchange(other.instance_, XR_NULL_HANDLE);
         system_id_ = std::exchange(other.system_id_, XR_NULL_SYSTEM_ID);
         openxr_debug_messenger_ = std::exchange(other.openxr_debug_messenger_, XR_NULL_HANDLE);
         vulkan_ = std::move(other.vulkan_);
+        graphics_queue_family_ = other.graphics_queue_family_;
+        graphics_queue_ = std::exchange(other.graphics_queue_, VK_NULL_HANDLE);
         return *this;
     }
 
@@ -186,7 +187,9 @@ namespace vxr {
         auto binding = make_struct<XrGraphicsBindingVulkan2KHR>();
         binding.instance = vulkan_instance();
         binding.physicalDevice = physical_device();
-        binding.device = device();
+        binding.device = device().logical;
+        binding.queueFamilyIndex = graphics_queue_family_;
+        binding.queueIndex = 0;
         return binding;
     }
 
@@ -196,13 +199,17 @@ namespace vxr {
             extension_dispatch{instance_}.destroy_debug_utils_messenger(openxr_debug_messenger_);
             openxr_debug_messenger_ = XR_NULL_HANDLE;
         }
-        if (instance_ != XR_NULL_HANDLE)
+        if (instance_ != XR_NULL_HANDLE) {
             xrDestroyInstance(instance_);
+        }
         instance_ = XR_NULL_HANDLE;
         system_id_ = XR_NULL_SYSTEM_ID;
+        graphics_queue_family_ = 0;
+        graphics_queue_ = VK_NULL_HANDLE;
     }
 
     context::builder::builder() {
+        vkz::spdlog_adapter::install();
         add_openxr_extension(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
 #ifndef NDEBUG
         add_openxr_extension(XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -216,7 +223,7 @@ namespace vxr {
         return *this;
     }
 
-    context::builder &context::builder::api_version(std::uint32_t version) {
+    context::builder &context::builder::vulkan_api_version(std::uint32_t version) {
         vulkan_api_version_ = version;
         vkz::builder::api_version(version);
         return *this;
@@ -233,14 +240,16 @@ namespace vxr {
     }
 
     context::builder &context::builder::add_openxr_extension(const std::string &extension) {
-        if (std::ranges::find(openxr_extensions_, extension) == openxr_extensions_.end())
+        if (std::ranges::find(openxr_extensions_, extension) == openxr_extensions_.end()) {
             openxr_extensions_.push_back(extension);
+        }
         return *this;
     }
 
     context::builder &context::builder::add_openxr_layer(const std::string &layer) {
-        if (std::ranges::find(openxr_layers_, layer) == openxr_layers_.end())
+        if (std::ranges::find(openxr_layers_, layer) == openxr_layers_.end()) {
             openxr_layers_.push_back(layer);
+        }
         return *this;
     }
 
@@ -269,32 +278,37 @@ namespace vxr {
 #endif
 
         XrInstance instance{};
-        check_xr(XR_NULL_HANDLE, xrCreateInstance(&create_info, &instance), "xrCreateInstance");
+        check(XR_NULL_HANDLE, xrCreateInstance(&create_info, &instance), "xrCreateInstance");
 
         XrDebugUtilsMessengerEXT debug_messenger{XR_NULL_HANDLE};
         try {
             auto system_info = make_struct<XrSystemGetInfo>();
             system_info.formFactor = form_factor_;
             XrSystemId system_id{};
-            check_xr(instance, xrGetSystem(instance, &system_info, &system_id), "xrGetSystem");
+            check(instance, xrGetSystem(instance, &system_info, &system_id), "xrGetSystem");
 
             extension_dispatch extensions{instance};
 #ifndef NDEBUG
-            check_xr(instance, extensions.create_debug_utils_messenger(debug_create_info, debug_messenger), "xrCreateDebugUtilsMessengerEXT");
+            check(instance, extensions.create_debug_utils_messenger(debug_create_info, debug_messenger), "xrCreateDebugUtilsMessengerEXT");
 #endif
             auto requirements = make_struct<XrGraphicsRequirementsVulkan2KHR>();
-            check_xr(instance, extensions.get_vulkan_graphics_requirements(system_id, requirements), "xrGetVulkanGraphicsRequirements2KHR");
+            check(instance, extensions.get_vulkan_graphics_requirements(system_id, requirements), "xrGetVulkanGraphicsRequirements2KHR");
             const XrVersion requested_vulkan_version = XR_MAKE_VERSION(VK_API_VERSION_MAJOR(vulkan_api_version_), VK_API_VERSION_MINOR(vulkan_api_version_), VK_API_VERSION_PATCH(vulkan_api_version_));
-            if (requested_vulkan_version < requirements.minApiVersionSupported || requested_vulkan_version > requirements.maxApiVersionSupported)
+            if (requested_vulkan_version < requirements.minApiVersionSupported || requested_vulkan_version > requirements.maxApiVersionSupported) {
                 throw std::runtime_error{"The requested Vulkan API version is outside the range supported by the OpenXR runtime"};
+            }
 
-            openxr_device_factory factory{instance, system_id, extensions, vulkan_api_version_};
+            std::uint32_t graphics_queue_family{};
+            openxr_device_factory factory{instance, system_id, extensions, vulkan_api_version_, graphics_queue_family};
             vkz::builder::device_factory(factory);
             auto vulkan = vkz::builder::build();
-            return context{instance, system_id, debug_messenger, std::move(vulkan)};
+            VkQueue graphics_queue{VK_NULL_HANDLE};
+            vkGetDeviceQueue(vulkan.device.logical, graphics_queue_family, 0, &graphics_queue);
+            return context{instance, system_id, debug_messenger, std::move(vulkan), graphics_queue_family, graphics_queue};
         } catch (...) {
-            if (debug_messenger != XR_NULL_HANDLE)
+            if (debug_messenger != XR_NULL_HANDLE) {
                 extension_dispatch{instance}.destroy_debug_utils_messenger(debug_messenger);
+            }
             xrDestroyInstance(instance);
             throw;
         }

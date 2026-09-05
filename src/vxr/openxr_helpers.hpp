@@ -1,9 +1,11 @@
 #pragma once
 
+#include <vxr/status.hpp>
+
 #include <openxr/openxr.h>
 #include <openxr/openxr_reflection_structs.h>
 
-#include <stdexcept>
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <tuple>
@@ -11,18 +13,6 @@
 #include <vector>
 
 namespace vxr {
-
-    class openxr_error : public std::runtime_error {
-      public:
-        openxr_error(std::string operation, XrResult result)
-        : std::runtime_error{operation + " failed with XrResult " + std::to_string(result)}
-        , result_{result} {}
-
-        [[nodiscard]] XrResult result() const noexcept { return result_; }
-
-      private:
-        XrResult result_;
-    };
 
     template <typename T> struct structure_type;
 
@@ -45,13 +35,21 @@ namespace vxr {
     template <typename T, typename Function, typename... Args> [[nodiscard]] std::vector<T> enumerate(Function &&function, Args &&...args) {
         uint32_t count = 0;
         XrResult result = std::forward<Function>(function)(std::forward<Args>(args)..., 0, &count, nullptr);
-        if (XR_FAILED(result))
+        if (XR_FAILED(result)) {
             throw openxr_error{"OpenXR enumeration count", result};
+        }
 
-        std::vector<T> values(count, make_struct<T>());
+        std::vector<T> values(count);
+        if constexpr (requires(T value) {
+                          value.type;
+                          value.next;
+                      }) {
+            std::ranges::fill(values, make_struct<T>());
+        }
         result = std::forward<Function>(function)(std::forward<Args>(args)..., count, &count, values.data());
-        if (XR_FAILED(result))
+        if (XR_FAILED(result)) {
             throw openxr_error{"OpenXR enumeration", result};
+        }
         values.resize(count);
         return values;
     }
@@ -59,16 +57,10 @@ namespace vxr {
     template <typename T, typename Function, typename... Args> [[nodiscard]] T get(Function &&function, Args &&...args) {
         T value = make_struct<T>();
         const XrResult result = std::forward<Function>(function)(std::forward<Args>(args)..., &value);
-        if (XR_FAILED(result))
+        if (XR_FAILED(result)) {
             throw openxr_error{"OpenXR getter", result};
+        }
         return value;
-    }
-
-    [[nodiscard]] inline std::string result_to_string(XrInstance instance, XrResult result) {
-        char text[XR_MAX_RESULT_STRING_SIZE]{};
-        if (instance != XR_NULL_HANDLE && XR_SUCCEEDED(xrResultToString(instance, result, text)))
-            return text;
-        return std::to_string(result);
     }
 
     [[nodiscard]] inline std::vector<XrViewConfigurationView> enumerate_view_configuration_views(XrInstance instance, XrSystemId system, XrViewConfigurationType view_configuration_type) {
@@ -79,7 +71,9 @@ namespace vxr {
         return enumerate<XrView>(xrLocateViews, session, &locate_info, &view_state);
     }
 
-    [[nodiscard]] inline XrSpaceLocation locate_space(XrSpace space, XrSpace base_space, XrTime time) { return get<XrSpaceLocation>(xrLocateSpace, space, base_space, time); }
+    [[nodiscard]] inline XrSpaceLocation locate_space(XrSpace space, XrSpace base_space, XrTime time) {
+        return get<XrSpaceLocation>(xrLocateSpace, space, base_space, time);
+    }
 
     [[nodiscard]] inline std::string_view to_string(XrViewConfigurationType type) noexcept {
         switch (type) {
