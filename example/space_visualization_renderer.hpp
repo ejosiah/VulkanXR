@@ -47,11 +47,7 @@ class space_visualization_renderer final : public vxr::renderer {
 
     void create_cube();
 
-    void create_render_pass();
-
     void create_image_views();
-
-    void create_framebuffers();
 
     void create_pipeline();
 
@@ -59,24 +55,18 @@ class space_visualization_renderer final : public vxr::renderer {
 
     void render_view(const vxr::frame_info &frame, std::uint32_t view_index);
 
-    [[nodiscard]] VkFramebuffer framebuffer(std::uint32_t color_image, std::uint32_t depth_image, std::uint32_t view_index) const;
-
     vkz::vma_memory_allocator allocator_{};
     vkz::buffer vertex_buffer_{};
     vkz::buffer index_buffer_{};
     vkz::pipeline pipeline_{};
     vkz::command_pool command_pool_{};
-    VkRenderPass render_pass_{VK_NULL_HANDLE};
     std::array<std::vector<vkz::image_view>, 2> color_views_;
     std::array<std::vector<vkz::image_view>, 2> depth_views_;
     std::array<vkz::image, 2> owned_depth_images_{};
-    std::vector<VkFramebuffer> framebuffers_;
     std::vector<cube_instance> cubes_;
     std::array<XrCompositionLayerProjectionView, 2> projection_views_{};
     std::array<XrCompositionLayerDepthInfoKHR, 2> depth_infos_{};
     XrCompositionLayerProjection projection_layer_{};
-    std::uint32_t color_image_count_{};
-    std::uint32_t depth_image_count_{1};
     std::uint32_t index_count_{};
     std::array<float, 2> hand_scale_{1.0F, 1.0F};
 };

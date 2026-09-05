@@ -115,9 +115,13 @@ namespace vxr {
                 queue_create_info.pQueuePriorities = priorities.data();
 
                 auto device_create_info = VkDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-                const auto extensions = device_extensions();
+                std::vector<const char *> extensions{device_extensions().begin(), device_extensions().end()};
+                if (api_version_ < VK_API_VERSION_1_3 && std::ranges::find(extensions, std::string_view{VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME}) == extensions.end()) {
+                    extensions.push_back(VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME);
+                }
                 const auto layers = device_layers();
-                device_create_info.pNext = device_extension_chain();
+                VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, const_cast<void *>(device_extension_chain()), VK_TRUE};
+                device_create_info.pNext = &dynamic_rendering;
                 device_create_info.queueCreateInfoCount = 1;
                 device_create_info.pQueueCreateInfos = &queue_create_info;
                 device_create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());

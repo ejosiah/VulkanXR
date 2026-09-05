@@ -42,7 +42,7 @@ class controller_renderer final : public vxr::renderer {
 
     void update_text();
 
-    void create_render_targets();
+    void create_image_views();
 
     void create_pipeline();
 
@@ -57,8 +57,6 @@ class controller_renderer final : public vxr::renderer {
     vkz::pipeline pipeline_{};
     vkz::command_pool command_pool_{};
     std::vector<vkz::image_view> image_views_;
-    std::vector<VkFramebuffer> framebuffers_;
-    VkRenderPass render_pass_{VK_NULL_HANDLE};
     XrCompositionLayerQuad layer_{};
     std::array<glm::vec2, 2> trackpad_positions_{};
     std::array<glm::vec2, 2> thumbstick_positions_{};

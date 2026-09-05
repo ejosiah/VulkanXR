@@ -4,6 +4,8 @@
 #include <vxr/openxr_helpers.hpp>
 
 #include <vulkanizer/builders.hpp>
+#include <vulkanizer/barrier.hpp>
+#include <vulkanizer/render.hpp>
 #include <vulkanizer/status.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -78,7 +80,7 @@ void controller_renderer::init() {
     descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}}};
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
     vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_, .bindings = {vkz::descriptor<vkz::buffer_descriptor>(text_buffer_, 0)}});
-    create_render_targets();
+    create_image_views();
     create_pipeline();
 
     auto &swapchain = get_swapchain("controller_text");
@@ -99,15 +101,8 @@ void controller_renderer::cleanup() {
     vkDeviceWaitIdle(device().logical);
     command_pool_.deinit();
     pipeline_.destroy();
-    for (const auto framebuffer : framebuffers_) {
-        vkDestroyFramebuffer(device().logical, framebuffer, nullptr);
-    }
     for (auto &view : image_views_) {
         view.destroy();
-    }
-    if (render_pass_ != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(device().logical, render_pass_, nullptr);
-        render_pass_ = VK_NULL_HANDLE;
     }
     descriptor_pool_.destroy();
     descriptor_layout_.destroy();
@@ -238,7 +233,8 @@ void controller_renderer::update_text() {
     for (const auto &action : action_history_) {
         history += action + "\n";
     }
-    const std::string prefix = "CONTROLLER INPUT TEST\n\nLeft profile:  " + profile(vxr::input::location::left_hand) + "\nRight profile: " + profile(vxr::input::location::right_hand) + "\n\nLast 5 actions:\n";
+    const std::string prefix =
+        "CONTROLLER INPUT TEST\n\nLeft profile:  " + profile(vxr::input::location::left_hand) + "\nRight profile: " + profile(vxr::input::location::right_hand) + "\n\nLast 5 actions:\n";
     const std::string text = prefix + history;
     auto &buffer = *text_mapping_.as<text_buffer>();
     buffer = {};
@@ -254,37 +250,13 @@ void controller_renderer::update_text() {
     }
 }
 
-void controller_renderer::create_render_targets() {
-    const VkAttachmentDescription attachment{0, format, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                                             VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    const VkAttachmentReference color_attachment{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment;
-    auto render_pass_info = VkRenderPassCreateInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    render_pass_info.attachmentCount = 1;
-    render_pass_info.pAttachments = &attachment;
-    render_pass_info.subpassCount = 1;
-    render_pass_info.pSubpasses = &subpass;
-    VKZ_CHECK_VULKAN(vkCreateRenderPass(device().logical, &render_pass_info, nullptr, &render_pass_));
-
+void controller_renderer::create_image_views() {
     for (const auto &swapchain_image : get_swapchain("controller_text").images()) {
         vkz::image image{};
         image.handle = swapchain_image.image;
         image.create_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         image.create_info.format = format;
         image_views_.push_back(vkz::image_view::builder(device()).image(image).format(format).aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT).build());
-        auto framebuffer_info = VkFramebufferCreateInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-        framebuffer_info.renderPass = render_pass_;
-        framebuffer_info.attachmentCount = 1;
-        framebuffer_info.pAttachments = &image_views_.back().handle;
-        framebuffer_info.width = width;
-        framebuffer_info.height = height;
-        framebuffer_info.layers = 1;
-        VkFramebuffer framebuffer{VK_NULL_HANDLE};
-        VKZ_CHECK_VULKAN(vkCreateFramebuffer(device().logical, &framebuffer_info, nullptr, &framebuffer));
-        framebuffers_.push_back(framebuffer);
     }
 }
 
@@ -316,7 +288,8 @@ void controller_renderer::create_pipeline() {
                     .add()
             .layout()
                 .add_descriptor_set_layout(descriptor_layout_)
-            .render_pass(render_pass_)
+            .dynamic_render_pass()
+                .add_color_attachment(format)
             .name("controller_text")
             .build();
     pipeline_.descriptor_sets = {descriptor_set_};
@@ -324,17 +297,15 @@ void controller_renderer::create_pipeline() {
 
 void controller_renderer::draw(std::uint32_t image_index) {
     const auto command_buffer = command_pool_.create_command_buffer();
-    const VkClearValue clear{{{0.02F, 0.03F, 0.05F, 1.0F}}};
-    auto begin_info = VkRenderPassBeginInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    begin_info.renderPass = render_pass_;
-    begin_info.framebuffer = framebuffers_.at(image_index);
-    begin_info.renderArea.extent = {width, height};
-    begin_info.clearValueCount = 1;
-    begin_info.pClearValues = &clear;
-    vkCmdBeginRenderPass(command_buffer, &begin_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkz::bind_pipeline(command_buffer, pipeline_);
-    vkz::draw(command_buffer, 3);
-    vkCmdEndRenderPass(command_buffer);
+    auto image = get_swapchain("controller_text").images()[image_index].image;
+    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    const vkz::render_info render_info{{{image_views_.at(image_index), format, {0.02F, 0.03F, 0.05F, 1.0F}}}, {}, {}, {width, height}};
+    vkz::render(command_buffer, render_info, [&] {
+        vkz::bind_pipeline(command_buffer, pipeline_);
+        vkz::draw(command_buffer, 3);
+    });
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);
     command_pool_.destroy(command_buffer);

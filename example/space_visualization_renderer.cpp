@@ -4,8 +4,10 @@
 #include <vxr/openxr_helpers.hpp>
 
 #include <vulkanizer/builders.hpp>
+#include <vulkanizer/barrier.hpp>
 #include <vulkanizer/commands.hpp>
 #include <vulkanizer/primitives.hpp>
+#include <vulkanizer/render.hpp>
 #include <vulkanizer/status.hpp>
 
 #include <cmrc/cmrc.hpp>
@@ -58,9 +60,7 @@ void space_visualization_renderer::init() {
     allocator_ = vkz::vma_memory_allocator::create(vulkan_context());
     command_pool_.init(device(), graphics_queue_family(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue());
     create_cube();
-    create_render_pass();
     create_image_views();
-    create_framebuffers();
     create_pipeline();
     setup_projection_layer();
 }
@@ -72,10 +72,6 @@ void space_visualization_renderer::cleanup() {
     vkDeviceWaitIdle(device().logical);
     command_pool_.deinit();
     pipeline_.destroy();
-    for (const auto framebuffer : framebuffers_) {
-        vkDestroyFramebuffer(device().logical, framebuffer, nullptr);
-    }
-    framebuffers_.clear();
     for (auto &views : color_views_) {
         for (auto &view : views) {
             view.destroy();
@@ -90,10 +86,6 @@ void space_visualization_renderer::cleanup() {
     }
     for (auto &image : owned_depth_images_) {
         image.destroy();
-    }
-    if (render_pass_ != VK_NULL_HANDLE) {
-        vkDestroyRenderPass(device().logical, render_pass_, nullptr);
-        render_pass_ = VK_NULL_HANDLE;
     }
     vertex_buffer_.destroy();
     index_buffer_.destroy();
@@ -264,31 +256,8 @@ void space_visualization_renderer::create_cube() {
     index_count_ = static_cast<std::uint32_t>(cube.indices.size());
 }
 
-void space_visualization_renderer::create_render_pass() {
-    const std::array attachments{
-        VkAttachmentDescription{0, color_format, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                                VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL},
-        VkAttachmentDescription{0, depth_format, VK_SAMPLE_COUNT_1_BIT, VK_ATTACHMENT_LOAD_OP_CLEAR, VK_ATTACHMENT_STORE_OP_STORE, VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-                                VK_ATTACHMENT_STORE_OP_DONT_CARE, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL}
-    };
-    const VkAttachmentReference color_attachment{0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
-    const VkAttachmentReference depth_attachment{1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
-    VkSubpassDescription subpass{};
-    subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    subpass.colorAttachmentCount = 1;
-    subpass.pColorAttachments = &color_attachment;
-    subpass.pDepthStencilAttachment = &depth_attachment;
-    auto create_info = VkRenderPassCreateInfo{VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO};
-    create_info.attachmentCount = static_cast<std::uint32_t>(attachments.size());
-    create_info.pAttachments = attachments.data();
-    create_info.subpassCount = 1;
-    create_info.pSubpasses = &subpass;
-    VKZ_CHECK_VULKAN(vkCreateRenderPass(device().logical, &create_info, nullptr, &render_pass_));
-}
-
 void space_visualization_renderer::create_image_views() {
     auto &color_swapchain = get_swapchain("main");
-    color_image_count_ = static_cast<std::uint32_t>(color_swapchain.images().size());
     for (std::uint32_t view_index = 0; view_index < 2; ++view_index) {
         for (const auto &swapchain_image : color_swapchain.images()) {
             vkz::image image{};
@@ -310,7 +279,6 @@ void space_visualization_renderer::create_image_views() {
 
     if (session_context_.depth_supported) {
         auto &depth_swapchain = get_swapchain("main_depth");
-        depth_image_count_ = static_cast<std::uint32_t>(depth_swapchain.images().size());
         for (std::uint32_t view_index = 0; view_index < 2; ++view_index) {
             for (const auto &swapchain_image : depth_swapchain.images()) {
                 vkz::image image{};
@@ -350,26 +318,6 @@ void space_visualization_renderer::create_image_views() {
     }
 }
 
-void space_visualization_renderer::create_framebuffers() {
-    const auto &swapchain = get_swapchain("main");
-    framebuffers_.resize(static_cast<std::size_t>(color_image_count_) * depth_image_count_ * 2);
-    for (std::uint32_t color_image = 0; color_image < color_image_count_; ++color_image) {
-        for (std::uint32_t depth_image = 0; depth_image < depth_image_count_; ++depth_image) {
-            for (std::uint32_t view_index = 0; view_index < 2; ++view_index) {
-                const std::array<VkImageView, 2> attachments{color_views_[view_index][color_image], depth_views_[view_index][depth_image]};
-                auto create_info = VkFramebufferCreateInfo{VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO};
-                create_info.renderPass = render_pass_;
-                create_info.attachmentCount = static_cast<std::uint32_t>(attachments.size());
-                create_info.pAttachments = attachments.data();
-                create_info.width = swapchain.width();
-                create_info.height = swapchain.height();
-                create_info.layers = 1;
-                VKZ_CHECK_VULKAN(vkCreateFramebuffer(device().logical, &create_info, nullptr, &framebuffers_[(color_image * depth_image_count_ + depth_image) * 2 + view_index]));
-            }
-        }
-    }
-}
-
 void space_visualization_renderer::create_pipeline() {
     pipeline_ =
         vkz::make_graphics_pipeline_builder(device())
@@ -406,7 +354,9 @@ void space_visualization_renderer::create_pipeline() {
                     .add()
             .layout()
                 .add_push_constant_range(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push_constants))
-            .render_pass(render_pass_)
+            .dynamic_render_pass()
+                .add_color_attachment(color_format)
+                .depth_attachment(depth_format)
             .name("space_visualization")
         .build();
 }
@@ -439,34 +389,36 @@ void space_visualization_renderer::setup_projection_layer() {
 void space_visualization_renderer::render_view(const vxr::frame_info &frame, std::uint32_t view_index) {
     const auto depth_image = frame.depth_image ? frame.depth_image->image_index : 0;
     const auto command_buffer = command_pool_.create_command_buffer();
-    const std::array<VkClearValue, 2> clear_values{{{{0.184313729F, 0.309803933F, 0.309803933F, 1.0F}}, {.depthStencil = {1.0F, 0}}}};
+    auto color_image = get_swapchain("main").images()[frame.image.image_index].image;
+    auto depth_image_handle = session_context_.depth_supported ? get_swapchain("main_depth").images()[depth_image].image : owned_depth_images_[view_index].handle;
+    const VkImageSubresourceRange color_range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
+    const VkImageSubresourceRange depth_range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, session_context_.depth_supported ? view_index : 0, 1};
+    vkz::barrier::push_and_flush(command_buffer, color_image, color_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkz::barrier::push_and_flush(command_buffer, depth_image_handle, depth_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                 VK_ACCESS_2_NONE, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                 VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
-    auto render_pass_info = VkRenderPassBeginInfo{VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO};
-    render_pass_info.renderPass = render_pass_;
-    render_pass_info.framebuffer = framebuffer(frame.image.image_index, depth_image, view_index);
-    render_pass_info.renderArea.extent = {get_swapchain("main").width(), get_swapchain("main").height()};
-    render_pass_info.clearValueCount = static_cast<std::uint32_t>(clear_values.size());
-    render_pass_info.pClearValues = clear_values.data();
-    vkCmdBeginRenderPass(command_buffer, &render_pass_info, VK_SUBPASS_CONTENTS_INLINE);
-    vkz::bind_pipeline(command_buffer, pipeline_);
-    vkz::bind_vertex_buffer(command_buffer, vertex_buffer_);
-    vkz::bind_index_buffer<std::uint32_t>(command_buffer, index_buffer_);
+    vkz::render_info render_info;
+    render_info.color_attachments.push_back({color_views_[view_index].at(frame.image.image_index), color_format, {0.184313729F, 0.309803933F, 0.309803933F, 1.0F}});
+    render_info.depth_attachment = vkz::depth_stencil_attachment{depth_views_[view_index].at(depth_image), depth_format};
+    render_info.render_area = {get_swapchain("main").width(), get_swapchain("main").height()};
+    vkz::render(command_buffer, render_info, [&] {
+        vkz::bind_pipeline(command_buffer, pipeline_);
+        vkz::bind_vertex_buffer(command_buffer, vertex_buffer_);
+        vkz::bind_index_buffer<std::uint32_t>(command_buffer, index_buffer_);
 
-    const auto &view = frame.view.views[view_index];
-    const glm::mat4 view_projection = projection(view.fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view.pose));
-    for (const auto &cube : cubes_) {
-        const push_constants constants{static_cast<glm::mat4>(cube.transform), view_projection};
-        vkz::push_constants(command_buffer, pipeline_, constants);
-        vkz::draw_indexed(command_buffer, index_count_);
-    }
-    vkCmdEndRenderPass(command_buffer);
+        const auto &view = frame.view.views[view_index];
+        const glm::mat4 view_projection = projection(view.fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view.pose));
+        for (const auto &cube : cubes_) {
+            const push_constants constants{static_cast<glm::mat4>(cube.transform), view_projection};
+            vkz::push_constants(command_buffer, pipeline_, constants);
+            vkz::draw_indexed(command_buffer, index_count_);
+        }
+    });
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);
     command_pool_.destroy(command_buffer);
-}
-
-VkFramebuffer space_visualization_renderer::framebuffer(std::uint32_t color_image, std::uint32_t depth_image, std::uint32_t view_index) const {
-    return framebuffers_.at((color_image * depth_image_count_ + depth_image) * 2 + view_index);
 }
 
 int main() {
