@@ -22,6 +22,9 @@ namespace vxr::session {
         std::map<std::string, XrSpace> action_spaces;
         XrEnvironmentBlendMode blend_mode{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
         std::optional<XrEventDataReferenceSpaceChangePending> reference_space_change;
+        bool cube_supported{};
+        bool equirect_supported{};
+        bool depth_supported{};
     };
 
 } // namespace vxr::session

@@ -3,6 +3,8 @@
 #include <vxr/openxr_helpers.hpp>
 #include <vxr/status.hpp>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <chrono>
 #include <thread>
@@ -12,6 +14,9 @@ namespace vxr::session {
 
     void service::init() {
         configuration_.validate();
+        session_context_.cube_supported = xr_context_.openxr_extension_enabled(XR_KHR_COMPOSITION_LAYER_CUBE_EXTENSION_NAME);
+        session_context_.equirect_supported = xr_context_.openxr_extension_enabled(XR_KHR_COMPOSITION_LAYER_EQUIRECT_EXTENSION_NAME);
+        session_context_.depth_supported = xr_context_.openxr_extension_enabled(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
         create_session();
         create_reference_spaces();
         create_swapchains();
@@ -80,6 +85,10 @@ namespace vxr::session {
     void service::create_swapchains() {
         const auto formats = enumerate<std::int64_t>(xrEnumerateSwapchainFormats, session_);
         for (const auto &specification : configuration_.swapchains) {
+            if (!session_context_.depth_supported && (specification.usage_flags_ & XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
+                spdlog::warn("Depth swapchain '{}' will not be created because XR_KHR_composition_layer_depth is not supported", specification.name_);
+                continue;
+            }
             if (std::ranges::find(formats, static_cast<std::int64_t>(specification.format_)) == formats.end()) {
                 throw std::runtime_error{"The requested OpenXR swapchain format is unsupported"};
             }
@@ -118,7 +127,7 @@ namespace vxr::session {
 
                 std::optional<image_id> depth_image;
                 vxr::swapchain *depth_swapchain{};
-                if (!swapchain.create_info().depth_.empty()) {
+                if (service_.session_context_.depth_supported && !swapchain.create_info().depth_.empty()) {
                     depth_swapchain = &service_.session_context_.swapchains.at(swapchain.create_info().depth_);
                     std::uint32_t depth_image_index{};
                     check(xrAcquireSwapchainImage(depth_swapchain->handle(), &acquire_info, &depth_image_index), "xrAcquireSwapchainImage depth");

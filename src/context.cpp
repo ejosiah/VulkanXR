@@ -150,9 +150,10 @@ namespace vxr {
 
     } // namespace
 
-    context::context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue) noexcept
+    context::context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue,
+                     std::vector<std::string> enabled_openxr_extensions) noexcept
         : instance_{instance}, system_id_{system_id}, openxr_debug_messenger_{debug_messenger}, vulkan_{std::move(vulkan)}, graphics_queue_family_{graphics_queue_family},
-          graphics_queue_{graphics_queue} {
+          graphics_queue_{graphics_queue}, enabled_openxr_extensions_{std::move(enabled_openxr_extensions)} {
     }
 
     context::~context() {
@@ -162,7 +163,7 @@ namespace vxr {
     context::context(context &&other) noexcept
         : instance_{std::exchange(other.instance_, XR_NULL_HANDLE)}, system_id_{std::exchange(other.system_id_, XR_NULL_SYSTEM_ID)},
           openxr_debug_messenger_{std::exchange(other.openxr_debug_messenger_, XR_NULL_HANDLE)}, vulkan_{std::move(other.vulkan_)}, graphics_queue_family_{other.graphics_queue_family_},
-          graphics_queue_{std::exchange(other.graphics_queue_, VK_NULL_HANDLE)} {
+          graphics_queue_{std::exchange(other.graphics_queue_, VK_NULL_HANDLE)}, enabled_openxr_extensions_{std::move(other.enabled_openxr_extensions_)} {
     }
 
     context &context::operator=(context &&other) noexcept {
@@ -176,6 +177,7 @@ namespace vxr {
         vulkan_ = std::move(other.vulkan_);
         graphics_queue_family_ = other.graphics_queue_family_;
         graphics_queue_ = std::exchange(other.graphics_queue_, VK_NULL_HANDLE);
+        enabled_openxr_extensions_ = std::move(other.enabled_openxr_extensions_);
         return *this;
     }
 
@@ -193,6 +195,10 @@ namespace vxr {
         return binding;
     }
 
+    bool context::openxr_extension_enabled(std::string_view extension) const noexcept {
+        return std::ranges::find(enabled_openxr_extensions_, extension) != enabled_openxr_extensions_.end();
+    }
+
     void context::reset() noexcept {
         vulkan_ = {};
         if (openxr_debug_messenger_ != XR_NULL_HANDLE) {
@@ -206,11 +212,15 @@ namespace vxr {
         system_id_ = XR_NULL_SYSTEM_ID;
         graphics_queue_family_ = 0;
         graphics_queue_ = VK_NULL_HANDLE;
+        enabled_openxr_extensions_.clear();
     }
 
     context::builder::builder() {
         vkz::spdlog_adapter::install();
         add_openxr_extension(XR_KHR_VULKAN_ENABLE2_EXTENSION_NAME);
+        add_optional_openxr_extension(XR_KHR_COMPOSITION_LAYER_CUBE_EXTENSION_NAME);
+        add_optional_openxr_extension(XR_KHR_COMPOSITION_LAYER_EQUIRECT_EXTENSION_NAME);
+        add_optional_openxr_extension(XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME);
 #ifndef NDEBUG
         add_openxr_extension(XR_EXT_DEBUG_UTILS_EXTENSION_NAME);
         add_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
@@ -246,6 +256,13 @@ namespace vxr {
         return *this;
     }
 
+    context::builder &context::builder::add_optional_openxr_extension(const std::string &extension) {
+        if (std::ranges::find(optional_openxr_extensions_, extension) == optional_openxr_extensions_.end()) {
+            optional_openxr_extensions_.push_back(extension);
+        }
+        return *this;
+    }
+
     context::builder &context::builder::add_openxr_layer(const std::string &layer) {
         if (std::ranges::find(openxr_layers_, layer) == openxr_layers_.end()) {
             openxr_layers_.push_back(layer);
@@ -254,10 +271,22 @@ namespace vxr {
     }
 
     context context::builder::build() {
+        const auto available_extensions = enumerate<XrExtensionProperties>(xrEnumerateInstanceExtensionProperties, nullptr);
+        auto enabled_openxr_extensions = openxr_extensions_;
+        for (const auto &extension : optional_openxr_extensions_) {
+            const bool supported = std::ranges::any_of(available_extensions, [&](const XrExtensionProperties &properties) {
+                return extension == properties.extensionName;
+            });
+            if (supported && std::ranges::find(enabled_openxr_extensions, extension) == enabled_openxr_extensions.end()) {
+                enabled_openxr_extensions.push_back(extension);
+            }
+        }
+
         std::vector<const char *> extension_names;
-        extension_names.reserve(openxr_extensions_.size());
-        for (const auto &extension : openxr_extensions_)
+        extension_names.reserve(enabled_openxr_extensions.size());
+        for (const auto &extension : enabled_openxr_extensions) {
             extension_names.push_back(extension.c_str());
+        }
 
         std::vector<const char *> layer_names;
         layer_names.reserve(openxr_layers_.size());
@@ -304,7 +333,7 @@ namespace vxr {
             auto vulkan = vkz::builder::build();
             VkQueue graphics_queue{VK_NULL_HANDLE};
             vkGetDeviceQueue(vulkan.device.logical, graphics_queue_family, 0, &graphics_queue);
-            return context{instance, system_id, debug_messenger, std::move(vulkan), graphics_queue_family, graphics_queue};
+            return context{instance, system_id, debug_messenger, std::move(vulkan), graphics_queue_family, graphics_queue, std::move(enabled_openxr_extensions)};
         } catch (...) {
             if (debug_messenger != XR_NULL_HANDLE) {
                 extension_dispatch{instance}.destroy_debug_utils_messenger(debug_messenger);

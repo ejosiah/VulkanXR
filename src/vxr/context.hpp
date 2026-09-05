@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace vxr {
@@ -72,12 +73,15 @@ namespace vxr {
             return graphics_queue_;
         }
 
+        [[nodiscard]] bool openxr_extension_enabled(std::string_view extension) const noexcept;
+
         [[nodiscard]] XrGraphicsBindingVulkan2KHR graphics_binding() const noexcept;
 
       private:
         friend class builder;
 
-        context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue) noexcept;
+        context(XrInstance instance, XrSystemId system_id, XrDebugUtilsMessengerEXT debug_messenger, vkz::context vulkan, std::uint32_t graphics_queue_family, VkQueue graphics_queue,
+                std::vector<std::string> enabled_openxr_extensions) noexcept;
 
         void reset() noexcept;
 
@@ -87,6 +91,7 @@ namespace vxr {
         vkz::context vulkan_{};
         std::uint32_t graphics_queue_family_{};
         VkQueue graphics_queue_{VK_NULL_HANDLE};
+        std::vector<std::string> enabled_openxr_extensions_;
     };
 
     class context::builder : public vkz::builder {
@@ -103,6 +108,8 @@ namespace vxr {
 
         builder &add_openxr_extension(const std::string &extension);
 
+        builder &add_optional_openxr_extension(const std::string &extension);
+
         builder &add_openxr_layer(const std::string &layer);
 
         [[nodiscard]] context build();
@@ -113,6 +120,7 @@ namespace vxr {
         XrVersion openxr_api_version_{XR_CURRENT_API_VERSION};
         XrFormFactor form_factor_{XR_FORM_FACTOR_HEAD_MOUNTED_DISPLAY};
         std::vector<std::string> openxr_extensions_;
+        std::vector<std::string> optional_openxr_extensions_;
         std::vector<std::string> openxr_layers_;
     };
 
