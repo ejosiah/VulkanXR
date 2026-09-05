@@ -85,19 +85,23 @@ target_compile_definitions(vulkanxr
 )
 
 if(VULKANXR_BUILD_EXAMPLES)
-    add_executable(vulkanxr_example
-        example/main.cpp
+    add_executable(vulkanxr_checkerboard_example
         example/checkerboard_renderer.cpp
         example/checkerboard_renderer.hpp
+    )
+    target_link_libraries(vulkanxr_checkerboard_example PRIVATE VulkanXR::VulkanXR spdlog::spdlog)
+
+    add_executable(vulkanxr_space_visualization_example
         example/space_visualization_renderer.cpp
         example/space_visualization_renderer.hpp
     )
-    target_link_libraries(vulkanxr_example
-        PRIVATE
-            VulkanXR::VulkanXR
-            VulkanXR::shaders
-            spdlog::spdlog
+    target_link_libraries(vulkanxr_space_visualization_example PRIVATE VulkanXR::VulkanXR VulkanXR::shaders spdlog::spdlog)
+
+    add_executable(vulkanxr_controller_example
+        example/controller_renderer.cpp
+        example/controller_renderer.hpp
     )
+    target_link_libraries(vulkanxr_controller_example PRIVATE VulkanXR::VulkanXR VulkanXR::shaders spdlog::spdlog)
     add_subdirectory(openxr_info)
 endif()
 
