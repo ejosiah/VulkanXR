@@ -200,7 +200,6 @@ namespace vxr {
     }
 
     void context::reset() noexcept {
-        vulkan_ = {};
         if (openxr_debug_messenger_ != XR_NULL_HANDLE) {
             extension_dispatch{instance_}.destroy_debug_utils_messenger(openxr_debug_messenger_);
             openxr_debug_messenger_ = XR_NULL_HANDLE;
@@ -209,6 +208,7 @@ namespace vxr {
             xrDestroyInstance(instance_);
         }
         instance_ = XR_NULL_HANDLE;
+        vulkan_ = {};
         system_id_ = XR_NULL_SYSTEM_ID;
         graphics_queue_family_ = 0;
         graphics_queue_ = VK_NULL_HANDLE;

@@ -24,7 +24,7 @@ namespace vxr {
                 session::context session_context;
                 auto renderer = renderer_factory_(xr_context, session_context);
                 if (!renderer) {
-                    throw std::runtime_error{"The renderer factory returned a null renderer"};
+                    throw fatal_error{"The renderer factory returned a null renderer"};
                 }
 
                 session::service session_service{xr_context, session_context, session_config_, *renderer};
@@ -62,9 +62,21 @@ namespace vxr {
                 const bool should_exit = shutdown_requested_ || session_service.should_exit();
                 session_service.destroy();
                 if (should_exit) break;
-            } catch (const std::exception &error) {
+            } catch (const openxr_error &error) {
+                spdlog::error("{}", error.what());
+                if (is_client_error(error.result())) {
+                    break;
+                }
+                backoff_();
+            } catch (const retryable_error &error) {
                 spdlog::error("{}", error.what());
                 backoff_();
+            } catch (const fatal_error &error) {
+                spdlog::error("{}", error.what());
+                break;
+            } catch (const std::exception &error) {
+                spdlog::error("{}", error.what());
+                break;
             }
         }
 
