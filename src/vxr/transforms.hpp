@@ -5,6 +5,7 @@
 #include <glm/gtc/quaternion.hpp>
 #include <openxr/openxr.h>
 
+#include <cmath>
 #include <string>
 
 namespace vxr {
@@ -45,6 +46,25 @@ namespace vxr {
 
     [[nodiscard]] inline glm::mat4 to_matrix(const XrPosef &value) noexcept {
         return to_matrix(to_pose(value));
+    }
+
+    [[nodiscard]] inline glm::mat4 projection(const XrFovf &fov, float near_plane, float far_plane) noexcept {
+        const float tan_left = std::tan(fov.angleLeft);
+        const float tan_right = std::tan(fov.angleRight);
+        const float tan_down = std::tan(fov.angleDown);
+        const float tan_up = std::tan(fov.angleUp);
+        const float width = tan_right - tan_left;
+        const float height = tan_down - tan_up;
+
+        glm::mat4 result{0.0F};
+        result[0][0] = 2.0F / width;
+        result[1][1] = 2.0F / height;
+        result[2][0] = (tan_right + tan_left) / width;
+        result[2][1] = (tan_up + tan_down) / height;
+        result[2][2] = -far_plane / (far_plane - near_plane);
+        result[2][3] = -1.0F;
+        result[3][2] = -(far_plane * near_plane) / (far_plane - near_plane);
+        return result;
     }
 
 } // namespace vxr

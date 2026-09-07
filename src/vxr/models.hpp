@@ -45,8 +45,13 @@ namespace vxr {
         std::optional<image_id> depth_image;
     };
 
-    using composition_layer = std::variant<XrCompositionLayerProjection *, XrCompositionLayerQuad *, XrCompositionLayerCubeKHR *, XrCompositionLayerEquirectKHR *, XrCompositionLayerCylinderKHR *,
-                                           XrCompositionLayerBaseHeader *>;
+    using composition_layer =
+            std::variant<XrCompositionLayerProjection *,
+                         XrCompositionLayerQuad *,
+                         XrCompositionLayerCubeKHR *,
+                         XrCompositionLayerEquirectKHR *,
+                         XrCompositionLayerCylinderKHR *,
+                         XrCompositionLayerBaseHeader *>;
 
     struct layer {
         composition_layer value;

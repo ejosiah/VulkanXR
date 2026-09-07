@@ -102,6 +102,13 @@ if(VULKANXR_BUILD_EXAMPLES)
         example/controller_renderer.hpp
     )
     target_link_libraries(vulkanxr_controller_example PRIVATE VulkanXR::VulkanXR VulkanXR::shaders spdlog::spdlog)
+
+    add_executable(vulkanxr_movement_example
+        example/movement_renderer.cpp
+        example/movement_renderer.hpp
+    )
+    target_compile_definitions(vulkanxr_movement_example PRIVATE VULKANXR_RESOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/resources")
+    target_link_libraries(vulkanxr_movement_example PRIVATE VulkanXR::VulkanXR VulkanXR::shaders spdlog::spdlog)
     add_subdirectory(openxr_info)
 endif()
 

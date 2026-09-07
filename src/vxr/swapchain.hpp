@@ -25,9 +25,15 @@ namespace vxr {
         std::uint32_t mip_count_{1};
         bool render_{true};
         std::string depth_;
+        std::string required_openxr_extension_;
 
         swapchain_create_info &name(std::string value) {
             name_ = std::move(value);
+            return *this;
+        }
+
+        swapchain_create_info &static_image() {
+            create_flags_ |= XR_SWAPCHAIN_CREATE_STATIC_IMAGE_BIT;
             return *this;
         }
 
@@ -98,6 +104,11 @@ namespace vxr {
 
         swapchain_create_info &depth(std::string value) {
             depth_ = std::move(value);
+            return *this;
+        }
+
+        swapchain_create_info &required_openxr_extension(std::string value) {
+            required_openxr_extension_ = std::move(value);
             return *this;
         }
     };

@@ -16,9 +16,10 @@
 
 #include <algorithm>
 #include <array>
-#include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <optional>
+#include <string_view>
 #include <utility>
 
 CMRC_DECLARE(vxr_shaders);
@@ -34,24 +35,48 @@ namespace {
         return {shader.begin(), shader.end()};
     }
 
-    [[nodiscard]] glm::mat4 projection(const XrFovf &fov, float near_plane, float far_plane) {
-        const float tan_left = std::tan(fov.angleLeft);
-        const float tan_right = std::tan(fov.angleRight);
-        const float tan_down = std::tan(fov.angleDown);
-        const float tan_up = std::tan(fov.angleUp);
-        const float width = tan_right - tan_left;
-        const float height = tan_down - tan_up;
-        const float offset_z = near_plane;
+    [[nodiscard]] std::optional<XrReferenceSpaceType> reference_space(std::string_view name) {
+        if (name == "stage") {
+            return XR_REFERENCE_SPACE_TYPE_STAGE;
+        }
+        if (name == "local") {
+            return XR_REFERENCE_SPACE_TYPE_LOCAL;
+        }
+        if (name == "local-floor") {
+            return XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT;
+        }
+        if (name == "view") {
+            return XR_REFERENCE_SPACE_TYPE_VIEW;
+        }
+        return std::nullopt;
+    }
 
-        glm::mat4 result{0.0F};
-        result[0][0] = 2.0F / width;
-        result[1][1] = 2.0F / height;
-        result[2][0] = (tan_right + tan_left) / width;
-        result[2][1] = (tan_up + tan_down) / height;
-        result[2][2] = -far_plane / (far_plane - near_plane);
-        result[2][3] = -1.0F;
-        result[3][2] = -(far_plane * offset_z) / (far_plane - near_plane);
-        return result;
+    [[nodiscard]] std::optional<XrReferenceSpaceType> base_space_from_arguments(int argc, char **argv) {
+        constexpr std::string_view option = "--base-space";
+        for (int index = 1; index < argc; ++index) {
+            const std::string_view argument = argv[index];
+            std::string_view value;
+            if (argument == option) {
+                if (++index >= argc) {
+                    spdlog::error("--base-space requires one of: stage, local, local-floor, view");
+                    return std::nullopt;
+                }
+                value = argv[index];
+            } else if (argument.starts_with("--base-space=")) {
+                value = argument.substr(option.size() + 1);
+            } else {
+                spdlog::error("Unknown argument '{}'. Expected --base-space stage|local|local-floor|view", argument);
+                return std::nullopt;
+            }
+
+            const auto space = reference_space(value);
+            if (!space) {
+                spdlog::error("Unknown base space '{}'. Expected stage, local, local-floor, or view", value);
+                return std::nullopt;
+            }
+            return space;
+        }
+        return XR_REFERENCE_SPACE_TYPE_STAGE;
     }
 
 } // namespace
@@ -409,7 +434,7 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
         vkz::bind_index_buffer<std::uint32_t>(command_buffer, index_buffer_);
 
         const auto &view = frame.view.views[view_index];
-        const glm::mat4 view_projection = projection(view.fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view.pose));
+        const glm::mat4 view_projection = vxr::projection(view.fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view.pose));
         for (const auto &cube : cubes_) {
             const push_constants constants{static_cast<glm::mat4>(cube.transform), view_projection};
             vkz::push_constants(command_buffer, pipeline_, constants);
@@ -421,14 +446,18 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
     command_pool_.destroy(command_buffer);
 }
 
-int main() {
+int main(int argc, char **argv) {
     spdlog::info("{} space visualization (Vulkan header version {})", vxr::project_name(), vxr::vulkan_header_version());
+    const auto base_space = base_space_from_arguments(argc, argv);
+    if (!base_space) {
+        return EXIT_FAILURE;
+    }
     auto context_builder = vxr::context::create();
     context_builder
         .app_name("VulkanXR Space Visualization")
         .vulkan_api_version(VK_API_VERSION_1_2)
         .openxr_api_version(XR_API_VERSION_1_0);
-    auto session_config = space_visualization_renderer::session_config();
+    auto session_config = space_visualization_renderer::session_config().base_space(*base_space);
     vxr::application application{context_builder, session_config, space_visualization_renderer::create};
     application.run();
     return EXIT_SUCCESS;

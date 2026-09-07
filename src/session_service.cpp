@@ -101,6 +101,10 @@ namespace vxr::session {
     void service::create_swapchains() {
         const auto formats = enumerate<std::int64_t>(xrEnumerateSwapchainFormats, session_);
         for (const auto &specification : configuration_.swapchains) {
+            if (!specification.required_openxr_extension_.empty() && !xr_context_.openxr_extension_enabled(specification.required_openxr_extension_)) {
+                spdlog::info("Swapchain '{}' will not be created because {} is not supported", specification.name_, specification.required_openxr_extension_);
+                continue;
+            }
             if (!session_context_.depth_supported && (specification.usage_flags_ & XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
                 spdlog::warn("Depth swapchain '{}' will not be created because XR_KHR_composition_layer_depth is not supported", specification.name_);
                 continue;
@@ -169,6 +173,7 @@ namespace vxr::session {
             }
         }
 
+        bind_actions(input::interaction_profile::simple());
         bind_actions(input::interaction_profile::oculus_touch_controller());
         bind_actions(input::interaction_profile::htc_vive_controller());
 
@@ -188,6 +193,10 @@ namespace vxr::session {
                 check(xr_context_.instance(), xrStringToPath(xr_context_.instance(), path->c_str(), &binding_path), "xrStringToPath action binding");
                 suggested_bindings.push_back({action.handle, binding_path});
             }
+        }
+
+        if (suggested_bindings.empty()) {
+            return;
         }
 
         XrPath profile_path{XR_NULL_PATH};

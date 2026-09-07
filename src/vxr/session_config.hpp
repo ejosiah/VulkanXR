@@ -160,6 +160,11 @@ namespace vxr::session {
             return *this;
         }
 
+        config &base_space(XrReferenceSpaceType type) {
+            base_space_type = type;
+            return *this;
+        }
+
         void validate() const {
             if (swapchains.empty()) {
                 throw std::invalid_argument{"At least one swapchain is required"};
