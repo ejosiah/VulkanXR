@@ -86,9 +86,9 @@ void movement_renderer::cleanup() {
         views.clear();
     }
     grid_.destroy();
-    specular_.destroy();
-    irradiance_.destroy();
-    diffuse_.destroy();
+    env_specular_.destroy();
+    env_irradiance_.destroy();
+    env_diffuse_.destroy();
     allocator_.destroy();
 }
 
@@ -242,9 +242,9 @@ vxr::session::config movement_renderer::session_config() {
 }
 
 void movement_renderer::load_textures() {
-    diffuse_ = vkz::texture_from_ktx(resource_path("skybox_diffuse.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-    irradiance_ = vkz::texture_from_ktx(resource_path("skybox_irradiance.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
-    specular_ = vkz::texture_from_ktx(resource_path("skybox_specular.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    env_diffuse_ = vkz::texture_from_ktx(resource_path("skybox_diffuse.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    env_irradiance_ = vkz::texture_from_ktx(resource_path("skybox_irradiance.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
+    env_specular_ = vkz::texture_from_ktx(resource_path("skybox_specular.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE);
     grid_ = vkz::texture_from_ktx(resource_path("grid.ktx"), allocator_, graphics_queue(), graphics_queue_family(), VK_SAMPLER_ADDRESS_MODE_REPEAT);
 }
 
@@ -260,15 +260,15 @@ void movement_renderer::cache_cube_layer() {
     auto destination = swapchain.images()[image_index].image;
     const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6};
     const auto command_buffer = command_pool_.create_command_buffer();
-    vkz::barrier::push_and_flush(command_buffer, diffuse_.image, range, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
+    vkz::barrier::push_and_flush(command_buffer, env_diffuse_.image, range, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
                                  VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
     vkz::barrier::push_and_flush(command_buffer, destination, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_ACCESS_2_TRANSFER_WRITE_BIT,
                                  VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
     const VkImageBlit region{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 6}, {{0, 0, 0}, {cube_size, cube_size, 1}}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 6}, {{0, 0, 0}, {cube_size, cube_size, 1}}};
-    vkCmdBlitImage(command_buffer, diffuse_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
+    vkCmdBlitImage(command_buffer, env_diffuse_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
     vkz::barrier::push_and_flush(command_buffer, destination, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_ACCESS_2_NONE,
                                  VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkz::barrier::push_and_flush(command_buffer, diffuse_.image, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
+    vkz::barrier::push_and_flush(command_buffer, env_diffuse_.image, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
                                  VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);
@@ -307,8 +307,8 @@ void movement_renderer::create_projection_resources() {
     descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4}}};
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
     vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_,
-                                      .bindings = {vkz::descriptor<vkz::texture_descriptor>(diffuse_, 0), vkz::descriptor<vkz::texture_descriptor>(grid_, 1),
-                                                   vkz::descriptor<vkz::texture_descriptor>(irradiance_, 2), vkz::descriptor<vkz::texture_descriptor>(specular_, 3)}});
+                                      .bindings = {vkz::descriptor<vkz::texture_descriptor>(env_diffuse_, 0), vkz::descriptor<vkz::texture_descriptor>(grid_, 1),
+                                                   vkz::descriptor<vkz::texture_descriptor>(env_irradiance_, 2), vkz::descriptor<vkz::texture_descriptor>(env_specular_, 3)}});
     create_projection_pipeline();
     setup_projection_layer();
 }
@@ -430,6 +430,7 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
     vkz::render_info render_info;
     render_info.color_attachments.push_back({projection_views_[view_index][frame.image.image_index], projection_format, {0.0F, 0.0F, 0.0F, 0.0F}});
     render_info.render_area = {projection_width, projection_height};
+
     vkz::render(command_buffer, render_info, [&] {
         auto view = vxr::to_pose(frame.view.views[view_index].pose);
         view.position += world_offset_;

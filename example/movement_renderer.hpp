@@ -75,9 +75,9 @@ class movement_renderer final : public vxr::renderer {
 
     vkz::vma_memory_allocator allocator_{};
     vkz::command_pool command_pool_{};
-    vkz::texture diffuse_{};
-    vkz::texture irradiance_{};
-    vkz::texture specular_{};
+    vkz::texture env_diffuse_{};
+    vkz::texture env_irradiance_{};
+    vkz::texture env_specular_{};
     vkz::texture grid_{};
     vkz::descriptor_pool descriptor_pool_{};
     vkz::descriptor_set_layout descriptor_layout_{};

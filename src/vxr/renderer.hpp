@@ -16,8 +16,9 @@ namespace vxr {
 
     class renderer {
       public:
-        renderer(context &xr_context, session::context &session_context) : xr_context_{xr_context}, session_context_{session_context} {
-        }
+        renderer(context &xr_context, session::context &session_context)
+        : xr_context_{xr_context}
+        , session_context_{session_context} {}
 
         virtual ~renderer() = default;
 
