@@ -12,7 +12,6 @@
 #include <vulkanizer/status.hpp>
 
 #include <cmrc/cmrc.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -137,7 +136,7 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
 
     const auto controller = world_pose(aim.value<vxr::pose>());
     teleport_.origin = controller.position + world_offset_;
-    teleport_.velocity = controller.orientation * glm::vec3{0.0F, 0.0F, -6.5F};
+    teleport_.velocity = controller.orientation * vxr::vec3{0.0F, 0.0F, -6.5F};
     teleport_.valid = intersect_ground(teleport_.origin, teleport_.velocity, teleport_.target);
 }
 
@@ -150,18 +149,18 @@ void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
     const bool movement_active = !vive_active || vive_trackpad_pressed;
     const float x = movement_active && move_x.active ? move_x.value<float>() : 0.0F;
     const float y = movement_active && move_y.active ? move_y.value<float>() : 0.0F;
-    glm::vec3 forward = head_orientation_ * glm::vec3{0.0F, 0.0F, -1.0F};
-    glm::vec3 right = head_orientation_ * glm::vec3{1.0F, 0.0F, 0.0F};
+    vxr::vec3 forward = head_orientation_ * vxr::vec3{0.0F, 0.0F, -1.0F};
+    vxr::vec3 right = head_orientation_ * vxr::vec3{1.0F, 0.0F, 0.0F};
     forward.y = 0.0F;
     right.y = 0.0F;
-    if (glm::dot(forward, forward) > 0.0F) {
-        forward = glm::normalize(forward);
+    if (vxr::dot(forward, forward) > 0.0F) {
+        forward = vxr::normalize(forward);
     }
-    if (glm::dot(right, right) > 0.0F) {
-        right = glm::normalize(right);
+    if (vxr::dot(right, right) > 0.0F) {
+        right = vxr::normalize(right);
     }
     constexpr float movement_speed = 2.0F;
-    const glm::vec3 movement = (forward * y + right * x) * movement_speed * frame_seconds_;
+    const vxr::vec3 movement = (forward * y + right * x) * movement_speed * frame_seconds_;
     world_offset_ += movement;
     head_position_ += movement;
 }
@@ -182,7 +181,7 @@ void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
     }
 
     constexpr float turn_speed = 1.5F;
-    const auto rotation = glm::angleAxis(-x * turn_speed * frame_seconds_, glm::vec3{0.0F, 1.0F, 0.0F});
+    const auto rotation = vxr::angleAxis(-x * turn_speed * frame_seconds_, vxr::vec3{0.0F, 1.0F, 0.0F});
     vxr::pose turn;
     turn.orientation = rotation;
     turn.position = tracked_head_in_world_.position - rotation * tracked_head_in_world_.position;
@@ -211,7 +210,7 @@ vxr::pose movement_renderer::head_pose(const std::vector<XrView> &views) {
     return result;
 }
 
-bool movement_renderer::intersect_ground(const glm::vec3 &origin, const glm::vec3 &velocity, glm::vec3 &intersection) {
+bool movement_renderer::intersect_ground(const vxr::vec3 &origin, const vxr::vec3 &velocity, vxr::vec3 &intersection) {
     constexpr float half_gravity = -4.905F;
     const float discriminant = velocity.y * velocity.y - 4.0F * half_gravity * origin.y;
     if (discriminant < 0.0F) {
@@ -226,7 +225,7 @@ bool movement_renderer::intersect_ground(const glm::vec3 &origin, const glm::vec
         return false;
     }
 
-    intersection = origin + velocity * time + glm::vec3{0.0F, half_gravity * time * time, 0.0F};
+    intersection = origin + velocity * time + vxr::vec3{0.0F, half_gravity * time * time, 0.0F};
     intersection.y = 0.0F;
     return true;
 }
@@ -567,9 +566,9 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
     vkz::render(command_buffer, render_info, [&] {
         auto view = world_pose(vxr::to_pose(frame.view.views[view_index].pose));
         view.position += world_offset_;
-        const auto view_projection = vxr::projection(frame.view.views[view_index].fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view));
-        const push_constants constants{glm::inverse(view_projection), glm::vec4{view.position, 1.0F}, view_projection, glm::vec4{teleport_.origin, 1.0F}, glm::vec4{teleport_.velocity, 0.0F},
-                                       glm::vec4{teleport_.target, 1.0F}, teleport_.active && teleport_.valid ? 1U : 0U};
+        const auto view_projection = vxr::projection(frame.view.views[view_index].fov, 0.05F, 100.0F) * vxr::inverse(vxr::to_matrix(view));
+        const push_constants constants{vxr::inverse(view_projection), vxr::vec4{view.position, 1.0F}, view_projection, vxr::vec4{teleport_.origin, 1.0F}, vxr::vec4{teleport_.velocity, 0.0F},
+                                       vxr::vec4{teleport_.target, 1.0F}, teleport_.active && teleport_.valid ? 1U : 0U};
         if (!session_context_.cube_supported) {
             vkz::bind_pipeline(command_buffer, skybox_pipeline_);
             vkz::push_constants(command_buffer, skybox_pipeline_, constants);
@@ -579,7 +578,7 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
         vkz::push_constants(command_buffer, floor_pipeline_, constants);
         vkz::draw(command_buffer, 3);
 
-        const auto cube_model = glm::translate(glm::mat4{1.0F}, glm::vec3{0.0F, 1.0F, -2.0F}) * glm::scale(glm::mat4{1.0F}, glm::vec3{1.0F, 2.0F, 1.0F});
+        const auto cube_model = vxr::translate(vxr::mat4{1.0F}, vxr::vec3{0.0F, 1.0F, -2.0F}) * vxr::scale(vxr::mat4{1.0F}, vxr::vec3{1.0F, 2.0F, 1.0F});
         vkz::bind_pipeline(command_buffer, cube_pipeline_);
         vkz::bind_vertex_buffer(command_buffer, cube_vertex_buffer_);
         vkz::bind_index_buffer<std::uint32_t>(command_buffer, cube_index_buffer_);

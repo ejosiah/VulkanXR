@@ -10,7 +10,6 @@
 
 #include <cmrc/cmrc.hpp>
 #include <fmt/format.h>
-#include <glm/geometric.hpp>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -40,15 +39,15 @@ namespace {
         if (std::holds_alternative<float>(action.state)) {
             return "XR_ACTION_TYPE_FLOAT_INPUT";
         }
-        if (std::holds_alternative<glm::vec2>(action.state)) {
+        if (std::holds_alternative<vxr::vec2>(action.state)) {
             return "XR_ACTION_TYPE_VECTOR2F_INPUT";
         }
         return "XR_ACTION_TYPE_POSE_INPUT";
     }
 
-    [[nodiscard]] std::string trackpad_region(const glm::vec2 &position) {
+    [[nodiscard]] std::string trackpad_region(const vxr::vec2 &position) {
         constexpr float center_radius = 0.35F;
-        if (glm::length(position) < center_radius) {
+        if (vxr::length(position) < center_radius) {
             return "center";
         }
         if (std::abs(position.x) > std::abs(position.y)) {

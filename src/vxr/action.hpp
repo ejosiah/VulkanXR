@@ -4,8 +4,6 @@
 
 #include <openxr/openxr.h>
 
-#include <glm/vec2.hpp>
-
 #include <compare>
 #include <map>
 #include <string>
@@ -13,7 +11,7 @@
 
 namespace vxr {
 
-    using action_state = std::variant<bool, float, glm::vec2, pose>;
+    using action_state = std::variant<bool, float, vec2, pose>;
 
     struct action {
         std::string name;

@@ -11,7 +11,6 @@
 #include <vulkanizer/status.hpp>
 
 #include <cmrc/cmrc.hpp>
-#include <glm/gtc/matrix_transform.hpp>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -123,7 +122,7 @@ void space_visualization_renderer::begin_frame() {
 
 void space_visualization_renderer::set(const std::vector<vxr::space_location> &space_locations) {
     for (const auto &space_location : space_locations) {
-        cubes_.push_back({{space_location.value, glm::vec3{0.25F}}});
+        cubes_.push_back({{space_location.value, vxr::vec3{0.25F}}});
     }
 }
 
@@ -146,7 +145,7 @@ std::vector<vxr::vibration> space_visualization_renderer::set(const vxr::action_
     const auto add_hand = [&](const char *action_name, std::size_t hand) {
         const auto &hand_pose = actions.get(action_name);
         if (hand_pose.active) {
-            cubes_.push_back({{hand_pose.value<vxr::pose>(), glm::vec3{0.1F} * hand_scale_[hand]}});
+            cubes_.push_back({{hand_pose.value<vxr::pose>(), vxr::vec3{0.1F} * hand_scale_[hand]}});
         }
     };
     add_hand("left_hand_pose", 0);
@@ -434,9 +433,9 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
         vkz::bind_index_buffer<std::uint32_t>(command_buffer, index_buffer_);
 
         const auto &view = frame.view.views[view_index];
-        const glm::mat4 view_projection = vxr::projection(view.fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view.pose));
+        const vxr::mat4 view_projection = vxr::projection(view.fov, 0.05F, 100.0F) * vxr::inverse(vxr::to_matrix(view.pose));
         for (const auto &cube : cubes_) {
-            const push_constants constants{static_cast<glm::mat4>(cube.transform), view_projection};
+            const push_constants constants{static_cast<vxr::mat4>(cube.transform), view_projection};
             vkz::push_constants(command_buffer, pipeline_, constants);
             vkz::draw_indexed(command_buffer, index_count_);
         }

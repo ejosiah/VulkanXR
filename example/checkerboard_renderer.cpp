@@ -8,9 +8,6 @@
 #include <vulkanizer/context.hpp>
 #include <vulkanizer/memory.hpp>
 
-#include <glm/common.hpp>
-#include <glm/exponential.hpp>
-#include <glm/geometric.hpp>
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -28,22 +25,22 @@ namespace {
         std::uint8_t a;
     };
 
-    [[nodiscard]] glm::vec4 colored_checkerboard(const glm::vec2 &uv) {
+    [[nodiscard]] vxr::vec4 colored_checkerboard(const vxr::vec2 &uv) {
         const float x = 2.0F * uv.x - 1.0F;
         const float y = 2.0F * uv.y - 1.0F;
-        return {glm::step(1.0F, glm::mod(glm::floor((x + 1.0F) / 0.2F) + glm::floor((y + 1.0F) / 0.2F), 2.0F)),
-                glm::step(1.0F, glm::mod(glm::floor((x + 1.0F) / 0.3F) + glm::floor((y + 1.0F) / 0.3F), 2.0F)),
-                glm::step(1.0F, glm::mod(glm::floor((x + 1.0F) / 0.4F) + glm::floor((y + 1.0F) / 0.4F), 2.0F)), 1.0F};
+        return {vxr::step(1.0F, vxr::mod(vxr::floor((x + 1.0F) / 0.2F) + vxr::floor((y + 1.0F) / 0.2F), 2.0F)),
+                vxr::step(1.0F, vxr::mod(vxr::floor((x + 1.0F) / 0.3F) + vxr::floor((y + 1.0F) / 0.3F), 2.0F)),
+                vxr::step(1.0F, vxr::mod(vxr::floor((x + 1.0F) / 0.4F) + vxr::floor((y + 1.0F) / 0.4F), 2.0F)), 1.0F};
     }
 
-    [[nodiscard]] glm::vec4 checkerboard(const glm::vec2 &uv) {
+    [[nodiscard]] vxr::vec4 checkerboard(const vxr::vec2 &uv) {
         const float x = 2.0F * uv.x - 1.0F;
         const float y = 2.0F * uv.y - 1.0F;
-        const float value = glm::step(1.0F, glm::mod(glm::floor((x + 1.0F) / 0.2F) + glm::floor((y + 1.0F) / 0.2F), 2.0F));
+        const float value = vxr::step(1.0F, vxr::mod(vxr::floor((x + 1.0F) / 0.2F) + vxr::floor((y + 1.0F) / 0.2F), 2.0F));
         return {value, value, value, 1.0F};
     }
 
-    [[nodiscard]] color to_color(const glm::vec4 &value) {
+    [[nodiscard]] color to_color(const vxr::vec4 &value) {
         return {static_cast<std::uint8_t>(value.r * 255.0F), static_cast<std::uint8_t>(value.g * 255.0F), static_cast<std::uint8_t>(value.b * 255.0F), static_cast<std::uint8_t>(value.a * 255.0F)};
     }
 
@@ -59,7 +56,7 @@ void checkerboard_renderer::init() {
     for (std::size_t layer_index = 0; layer_index < layers_.size(); ++layer_index) {
         for (std::uint32_t y = 0; y < height; ++y) {
             for (std::uint32_t x = 0; x < width; ++x) {
-                const glm::vec2 uv{static_cast<float>(x) / static_cast<float>(width), static_cast<float>(y) / static_cast<float>(height)};
+                const vxr::vec2 uv{static_cast<float>(x) / static_cast<float>(width), static_cast<float>(y) / static_cast<float>(height)};
                 colors[layer_index * layer_size + y * width + x] = to_color(layer_index == 0 ? checkerboard(uv) : colored_checkerboard(uv));
             }
         }

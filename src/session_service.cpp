@@ -446,7 +446,7 @@ namespace vxr::session {
                     action_state.active = state.isActive == XR_TRUE;
                     action_state.changed = state.changedSinceLastSync == XR_TRUE;
                     if (action_state.active) {
-                        action_state.state = glm::vec2{state.currentState.x, state.currentState.y};
+                        action_state.state = vec2{state.currentState.x, state.currentState.y};
                     }
                     break;
                 }

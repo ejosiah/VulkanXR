@@ -41,8 +41,8 @@ class space_visualization_renderer final : public vxr::renderer {
     };
 
     struct push_constants {
-        glm::mat4 model{1.0F};
-        glm::mat4 view_projection{1.0F};
+        vxr::mat4 model{1.0F};
+        vxr::mat4 view_projection{1.0F};
     };
 
     void create_cube();

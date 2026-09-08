@@ -40,26 +40,26 @@ class movement_renderer final : public vxr::renderer {
 
   private:
     struct push_constants {
-        glm::mat4 inverse_view_projection{1.0F};
-        glm::vec4 origin{};
-        glm::mat4 view_projection{1.0F};
-        glm::vec4 teleport_origin{};
-        glm::vec4 teleport_velocity{};
-        glm::vec4 teleport_target{};
+        vxr::mat4 inverse_view_projection{1.0F};
+        vxr::vec4 origin{};
+        vxr::mat4 view_projection{1.0F};
+        vxr::vec4 teleport_origin{};
+        vxr::vec4 teleport_velocity{};
+        vxr::vec4 teleport_target{};
         std::uint32_t teleport_active{};
     };
 
     struct teleport_state {
         bool active{};
         bool valid{};
-        glm::vec3 origin{};
-        glm::vec3 velocity{};
-        glm::vec3 target{};
+        vxr::vec3 origin{};
+        vxr::vec3 velocity{};
+        vxr::vec3 target{};
     };
 
     struct object_push_constants {
-        glm::mat4 model{1.0F};
-        glm::mat4 view_projection{1.0F};
+        vxr::mat4 model{1.0F};
+        vxr::mat4 view_projection{1.0F};
     };
 
     void load_textures();
@@ -94,7 +94,7 @@ class movement_renderer final : public vxr::renderer {
 
     [[nodiscard]] static vxr::pose head_pose(const std::vector<XrView> &views);
 
-    [[nodiscard]] static bool intersect_ground(const glm::vec3 &origin, const glm::vec3 &velocity, glm::vec3 &intersection);
+    [[nodiscard]] static bool intersect_ground(const vxr::vec3 &origin, const vxr::vec3 &velocity, vxr::vec3 &intersection);
 
     vkz::vma_memory_allocator allocator_{};
     vkz::command_pool command_pool_{};
@@ -116,11 +116,11 @@ class movement_renderer final : public vxr::renderer {
     XrCompositionLayerProjection projection_layer_{};
     XrCompositionLayerCubeKHR cube_layer_{};
     teleport_state teleport_{};
-    glm::vec3 world_offset_{};
+    vxr::vec3 world_offset_{};
     vxr::pose world_from_tracking_{};
     vxr::pose tracked_head_in_world_{};
     bool tracked_head_in_world_valid_{};
-    glm::vec3 head_position_{};
-    glm::quat head_orientation_{1.0F, 0.0F, 0.0F, 0.0F};
+    vxr::vec3 head_position_{};
+    vxr::quat head_orientation_{1.0F, 0.0F, 0.0F, 0.0F};
     float frame_seconds_{1.0F / 90.0F};
 };

@@ -1,8 +1,8 @@
 #pragma once
 
-#include <openxr/openxr.h>
+#include <vxr/math.hpp>
 
-#include <glm/vec2.hpp>
+#include <openxr/openxr.h>
 
 #include <compare>
 #include <cstdint>
@@ -25,7 +25,7 @@ namespace vxr {
 
     struct sub_image {
         std::string swapchain;
-        glm::vec2 region{};
+        vec2 region{};
         std::uint32_t array_index{};
     };
 

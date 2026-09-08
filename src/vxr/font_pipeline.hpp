@@ -1,16 +1,16 @@
 #pragma once
 
+#include <vxr/math.hpp>
+
 #include <vulkanizer/descriptors.hpp>
 #include <vulkanizer/pipeline.hpp>
-
-#include <glm/vec4.hpp>
 
 #include <string>
 
 namespace vxr {
 
     struct font_push_constants {
-        glm::vec4 background_color{0.02F, 0.03F, 0.05F, 1.0F};
+        vec4 background_color{0.02F, 0.03F, 0.05F, 1.0F};
     };
 
     struct font_pipeline_create_info {

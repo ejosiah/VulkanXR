@@ -55,17 +55,17 @@ namespace vxr::session {
         }
 
         reference_space_specification &rotate_x(float angle) {
-            pose_in_reference_space.orientation = glm::angleAxis(glm::radians(angle), glm::vec3{1.0F, 0.0F, 0.0F});
+            pose_in_reference_space.orientation = angleAxis(radians(angle), vec3{1.0F, 0.0F, 0.0F});
             return *this;
         }
 
         reference_space_specification &rotate_y(float angle) {
-            pose_in_reference_space.orientation = glm::angleAxis(glm::radians(angle), glm::vec3{0.0F, 1.0F, 0.0F});
+            pose_in_reference_space.orientation = angleAxis(radians(angle), vec3{0.0F, 1.0F, 0.0F});
             return *this;
         }
 
         reference_space_specification &rotate_z(float angle) {
-            pose_in_reference_space.orientation = glm::angleAxis(glm::radians(angle), glm::vec3{0.0F, 0.0F, 1.0F});
+            pose_in_reference_space.orientation = angleAxis(radians(angle), vec3{0.0F, 0.0F, 1.0F});
             return *this;
         }
     };
