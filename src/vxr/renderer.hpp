@@ -1,7 +1,7 @@
 #pragma once
 
 #include <vxr/action.hpp>
-#include <vxr/context.hpp>
+#include <vxr/rendering_context.hpp>
 #include <vxr/models.hpp>
 #include <vxr/session_context.hpp>
 #include <vxr/transforms.hpp>
@@ -16,8 +16,8 @@ namespace vxr {
 
     class renderer {
       public:
-        renderer(context &xr_context, session::context &session_context)
-        : xr_context_{xr_context}
+        renderer(rendering_context &rendering_context, session::context &session_context)
+        : rendering_context_{rendering_context}
         , session_context_{session_context} {}
 
         virtual ~renderer() = default;
@@ -58,19 +58,19 @@ namespace vxr {
 
       protected:
         [[nodiscard]] vkz::device &device() const noexcept {
-            return xr_context_.device();
+            return rendering_context_.device();
         }
 
         [[nodiscard]] vkz::context &vulkan_context() const noexcept {
-            return xr_context_.vulkan_context();
+            return rendering_context_.vulkan_context();
         }
 
         [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
-            return xr_context_.graphics_queue_family();
+            return rendering_context_.graphics_queue_family();
         }
 
         [[nodiscard]] VkQueue graphics_queue() const noexcept {
-            return xr_context_.graphics_queue();
+            return rendering_context_.graphics_queue();
         }
 
         [[nodiscard]] swapchain &get_swapchain(const std::string &name) {
@@ -87,7 +87,7 @@ namespace vxr {
             return found->second;
         }
 
-        context &xr_context_;
+        rendering_context &rendering_context_;
         session::context &session_context_;
     };
 

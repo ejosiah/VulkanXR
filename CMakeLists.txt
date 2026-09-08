@@ -36,12 +36,18 @@ cmrc_add_resource_library(vulkanxr_shaders
 
 add_library(vulkanxr STATIC
     src/vxr/application.hpp
+    src/vxr/application_builder.hpp
+    src/vxr/app.hpp
+    src/vxr/desktop_application.hpp
+    src/vxr/desktop_context.hpp
+    src/vxr/desktop_input.hpp
     src/vxr/backoff.hpp
     src/vxr/action.hpp
     src/vxr/vxr.hpp
     src/vxr/openxr_helpers.hpp
     src/vxr/status.hpp
     src/vxr/renderer.hpp
+    src/vxr/rendering_context.hpp
     src/vxr/input.hpp
     src/vxr/session_context.hpp
     src/vxr/session_config.hpp
@@ -54,6 +60,9 @@ add_library(vulkanxr STATIC
     src/vxr/models.hpp
     src/vxr/transforms.hpp
     src/application.cpp
+    src/application_builder.cpp
+    src/desktop_application.cpp
+    src/desktop_input.cpp
     src/backoff.cpp
     src/vulkanxr.cpp
     src/extension_dispatch.cpp

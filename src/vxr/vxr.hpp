@@ -7,6 +7,8 @@
 #include <openxr/openxr.h>
 
 #include <vxr/application.hpp>
+#include <vxr/application_builder.hpp>
+#include <vxr/app.hpp>
 #include <vxr/backoff.hpp>
 #include <vxr/extension_dispatch.hpp>
 #include <vxr/font_pipeline.hpp>
@@ -15,10 +17,14 @@
 #include <vxr/mirror.hpp>
 #include <vxr/action.hpp>
 #include <vxr/context.hpp>
+#include <vxr/desktop_application.hpp>
+#include <vxr/desktop_context.hpp>
+#include <vxr/desktop_input.hpp>
 #include <vxr/models.hpp>
 #include <vxr/openxr_helpers.hpp>
 #include <vxr/status.hpp>
 #include <vxr/renderer.hpp>
+#include <vxr/rendering_context.hpp>
 #include <vxr/session_context.hpp>
 #include <vxr/session_config.hpp>
 #include <vxr/session_service.hpp>

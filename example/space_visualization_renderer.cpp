@@ -63,6 +63,8 @@ namespace {
                 value = argv[index];
             } else if (argument.starts_with("--base-space=")) {
                 value = argument.substr(option.size() + 1);
+            } else if (argument == "--desktop") {
+                continue;
             } else {
                 spdlog::error("Unknown argument '{}'. Expected --base-space stage|local|local-floor|view", argument);
                 return std::nullopt;
@@ -76,6 +78,15 @@ namespace {
             return space;
         }
         return XR_REFERENCE_SPACE_TYPE_STAGE;
+    }
+
+    [[nodiscard]] vxr::application_mode application_mode(int argc, char **argv) {
+        for (int index = 1; index < argc; ++index) {
+            if (std::string_view{argv[index]} == "--desktop") {
+                return vxr::application_mode::desktop;
+            }
+        }
+        return vxr::application_mode::vr;
     }
 
 } // namespace
@@ -172,8 +183,8 @@ const char *space_visualization_renderer::name() const noexcept {
     return "Space Visualization";
 }
 
-std::unique_ptr<vxr::renderer> space_visualization_renderer::create(vxr::context &xr_context, vxr::session::context &session_context) {
-    return std::make_unique<space_visualization_renderer>(xr_context, session_context);
+std::unique_ptr<vxr::renderer> space_visualization_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
+    return std::make_unique<space_visualization_renderer>(rendering_context, session_context);
 }
 
 vxr::session::config space_visualization_renderer::session_config() {
@@ -451,13 +462,18 @@ int main(int argc, char **argv) {
     if (!base_space) {
         return EXIT_FAILURE;
     }
-    auto context_builder = vxr::context::create();
-    context_builder
-        .app_name("VulkanXR Space Visualization")
-        .vulkan_api_version(VK_API_VERSION_1_2)
-        .openxr_api_version(XR_API_VERSION_1_0);
-    auto session_config = space_visualization_renderer::session_config().base_space(*base_space);
-    vxr::application application{context_builder, session_config, space_visualization_renderer::create};
-    application.run();
+
+    auto application  =
+        vxr::application_builder{}
+            .app_name("VulkanXR Space Visualization")
+            .vulkan_api_version(VK_API_VERSION_1_2)
+            .openxr_api_version(XR_API_VERSION_1_0)
+            .session(space_visualization_renderer::session_config().base_space(*base_space))
+            .renderer(space_visualization_renderer::create)
+            .mode(application_mode(argc, argv))
+        .build();
+
+    application->run();
+
     return EXIT_SUCCESS;
 }

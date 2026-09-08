@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vxr/rendering_context.hpp>
+
 #include <openxr/openxr.h>
 #include <vulkanizer/context.hpp>
 #include <openxr/openxr_platform.h>
@@ -11,7 +13,7 @@
 
 namespace vxr {
 
-    class context {
+    class context : public rendering_context {
       public:
         class builder;
 
@@ -45,19 +47,11 @@ namespace vxr {
             return vulkan_.device.physical;
         }
 
-        [[nodiscard]] vkz::device &device() noexcept {
-            return vulkan_.device;
-        }
-
-        [[nodiscard]] const vkz::device &device() const noexcept {
-            return vulkan_.device;
-        }
-
-        [[nodiscard]] vkz::context &vulkan_context() noexcept {
+        [[nodiscard]] vkz::context &vulkan_context() noexcept override {
             return vulkan_;
         }
 
-        [[nodiscard]] const vkz::context &vulkan_context() const noexcept {
+        [[nodiscard]] const vkz::context &vulkan_context() const noexcept override {
             return vulkan_;
         }
 
@@ -73,11 +67,11 @@ namespace vxr {
             return vulkan_.api_version;
         }
 
-        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
+        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept override {
             return graphics_queue_family_;
         }
 
-        [[nodiscard]] VkQueue graphics_queue() const noexcept {
+        [[nodiscard]] VkQueue graphics_queue() const noexcept override {
             return graphics_queue_;
         }
 
@@ -107,6 +101,10 @@ namespace vxr {
         builder();
 
         builder &app_name(const std::string &name);
+
+        [[nodiscard]] const std::string &app_name() const noexcept {
+            return application_name_;
+        }
 
         builder &vulkan_api_version(std::uint32_t version);
 
