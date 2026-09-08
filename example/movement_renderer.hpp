@@ -72,6 +72,8 @@ class movement_renderer final : public vxr::renderer {
 
     void create_projection_pipeline();
 
+    void create_cubemap_pipeline();
+
     void create_cube();
 
     void create_cube_pipeline();
@@ -106,6 +108,7 @@ class movement_renderer final : public vxr::renderer {
     vkz::descriptor_set_layout descriptor_layout_{};
     vkz::descriptor_set descriptor_set_{};
     vkz::pipeline skybox_pipeline_{};
+    vkz::pipeline cubemap_pipeline_{};
     vkz::pipeline floor_pipeline_{};
     vkz::pipeline cube_pipeline_{};
     vkz::buffer cube_vertex_buffer_{};

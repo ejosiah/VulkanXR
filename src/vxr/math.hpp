@@ -24,6 +24,7 @@ namespace vxr {
     using glm::floor;
     using glm::inverse;
     using glm::length;
+    using glm::lookAt;
     using glm::mat4_cast;
     using glm::mod;
     using glm::normalize;

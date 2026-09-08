@@ -63,9 +63,14 @@ void movement_renderer::init() {
     create_cube_pipeline();
     if (session_context_.cube_supported) {
         spdlog::info("OpenXR cube composition layers are enabled; using the cube layer for the skybox");
+        auto &swapchain = get_swapchain("movement_cube");
+        create_cubemap_pipeline();
         cache_cube_layer();
+        cube_layer_ = vxr::make_struct<XrCompositionLayerCubeKHR>();
+        cube_layer_.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+        cube_layer_.swapchain = swapchain.handle();
+        cube_layer_.orientation.w = 1.0F;
     }
-
 }
 
 void movement_renderer::cleanup() {
@@ -75,6 +80,7 @@ void movement_renderer::cleanup() {
     vkDeviceWaitIdle(device().logical);
     command_pool_.deinit();
     cube_pipeline_.destroy();
+    cubemap_pipeline_.destroy();
     cube_index_buffer_.destroy();
     cube_vertex_buffer_.destroy();
     floor_pipeline_.destroy();
@@ -235,6 +241,16 @@ void movement_renderer::paused(const vxr::frame_info &frame, vxr::layers &layers
 }
 
 void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers) {
+    if (session_context_.cube_supported && frame.image.swapchain == get_swapchain("movement_cube").handle()) {
+        const auto orientation = vxr::inverse(world_from_tracking_.orientation);
+        cube_layer_.orientation = {orientation.x, orientation.y, orientation.z, orientation.w};
+        layers.push_back({&cube_layer_, 0});
+        return;
+    }
+    if (frame.image.swapchain != get_swapchain("movement_projection").handle()) {
+        return;
+    }
+
     frame_seconds_ = std::clamp(static_cast<float>(frame.predicted_duration) * 1.0e-9F, 0.0F, 0.1F);
     const auto view_count = std::min(frame.view.views.size(), projection_layer_views_.size());
     if (view_count > 0) {
@@ -249,12 +265,7 @@ void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers
         projection_layer_views_[view_index].fov = frame.view.views[view_index].fov;
     }
     projection_layer_.viewCount = static_cast<std::uint32_t>(view_count);
-    if (session_context_.cube_supported) {
-        layers.push_back({&cube_layer_, 0});
-        layers.push_back({&projection_layer_, 1});
-    } else {
-        layers.push_back({&projection_layer_, 0});
-    }
+    layers.push_back({&projection_layer_, session_context_.cube_supported ? 1U : 0U});
 }
 
 const char *movement_renderer::name() const noexcept {
@@ -298,14 +309,11 @@ vxr::session::config movement_renderer::session_config() {
         .add_swapchain(
             vxr::swapchain_create_info{}
                 .name("movement_cube")
-                .static_image()
                 .usage()
                     .color_attachment()
-                    .transfer_destination()
                 .format(cube_format)
                 .extent(cube_size, cube_size)
                 .face_count(6)
-                .render(false)
                 .required_openxr_extension(XR_KHR_COMPOSITION_LAYER_CUBE_EXTENSION_NAME)
         );
     return config;
@@ -320,36 +328,55 @@ void movement_renderer::load_textures() {
 
 void movement_renderer::cache_cube_layer() {
     auto &swapchain = get_swapchain("movement_cube");
-    auto acquire_info = vxr::make_struct<XrSwapchainImageAcquireInfo>();
-    std::uint32_t image_index{};
-    vxr::check(xrAcquireSwapchainImage(swapchain.handle(), &acquire_info, &image_index), "xrAcquireSwapchainImage movement cube");
-    auto wait_info = vxr::make_struct<XrSwapchainImageWaitInfo>();
-    wait_info.timeout = XR_INFINITE_DURATION;
-    vxr::check(xrWaitSwapchainImage(swapchain.handle(), &wait_info), "xrWaitSwapchainImage movement cube");
-
-    auto destination = swapchain.images()[image_index].image;
     const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 6};
+    const XrFovf fov{-vxr::radians(45.0F), vxr::radians(45.0F), vxr::radians(45.0F), -vxr::radians(45.0F)};
+    auto face_projection = vxr::projection(fov, 0.05F, 10.0F);
+    face_projection[1][1] *= -1.0F;
+    const std::array directions{vxr::vec3{1.0F, 0.0F, 0.0F}, vxr::vec3{-1.0F, 0.0F, 0.0F}, vxr::vec3{0.0F, 1.0F, 0.0F}, vxr::vec3{0.0F, -1.0F, 0.0F},
+                                vxr::vec3{0.0F, 0.0F, 1.0F}, vxr::vec3{0.0F, 0.0F, -1.0F}};
+    const std::array up{vxr::vec3{0.0F, -1.0F, 0.0F}, vxr::vec3{0.0F, -1.0F, 0.0F}, vxr::vec3{0.0F, 0.0F, 1.0F}, vxr::vec3{0.0F, 0.0F, -1.0F},
+                        vxr::vec3{0.0F, -1.0F, 0.0F}, vxr::vec3{0.0F, -1.0F, 0.0F}};
     const auto command_buffer = command_pool_.create_command_buffer();
-    vkz::barrier::push_and_flush(command_buffer, env_diffuse_.image, range, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_SHADER_READ_BIT,
-                                 VK_ACCESS_2_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
-    vkz::barrier::push_and_flush(command_buffer, destination, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_NONE, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                 VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-    const VkImageBlit region{{VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 6}, {{0, 0, 0}, {cube_size, cube_size, 1}}, {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 6}, {{0, 0, 0}, {cube_size, cube_size, 1}}};
-    vkCmdBlitImage(command_buffer, env_diffuse_.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, destination, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
-    vkz::barrier::push_and_flush(command_buffer, destination, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_NONE, VK_ACCESS_2_TRANSFER_WRITE_BIT, VK_ACCESS_2_NONE,
-                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkz::barrier::push_and_flush(command_buffer, env_diffuse_.image, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
-                                 VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    std::vector<vkz::image_view> face_views;
+    face_views.reserve(swapchain.images().size() * directions.size());
+    for (const auto &swapchain_image : swapchain.images()) {
+        vkz::image image{};
+        image.handle = swapchain_image.image;
+        image.create_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+        image.create_info.format = cube_format;
+        vkz::barrier::push_and_flush(command_buffer, image.handle, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+        for (std::uint32_t face = 0; face < directions.size(); ++face) {
+            face_views.push_back(
+                vkz::image_view::builder(device())
+                    .image(image)
+                    .view_type(VK_IMAGE_VIEW_TYPE_2D)
+                    .format(cube_format)
+                    .aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT)
+                    .base_array_layer(face)
+                    .layer_count(1)
+                    .build()
+            );
+            auto &view = face_views.back();
+            vkz::render_info render_info;
+            render_info.color_attachments.push_back({view, cube_format});
+            render_info.render_area = {cube_size, cube_size};
+            vkz::render(command_buffer, render_info, [&] {
+                const auto view_projection = face_projection * vxr::lookAt(vxr::vec3{}, directions[face], up[face]);
+                const push_constants constants{vxr::inverse(view_projection)};
+                vkz::bind_pipeline(command_buffer, cubemap_pipeline_);
+                vkz::push_constants(command_buffer, cubemap_pipeline_, constants);
+                vkz::draw(command_buffer, 3);
+            });
+        }
+    }
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);
     command_pool_.destroy(command_buffer);
-
-    auto release_info = vxr::make_struct<XrSwapchainImageReleaseInfo>();
-    vxr::check(xrReleaseSwapchainImage(swapchain.handle(), &release_info), "xrReleaseSwapchainImage movement cube");
-    cube_layer_ = vxr::make_struct<XrCompositionLayerCubeKHR>();
-    cube_layer_.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-    cube_layer_.swapchain = swapchain.handle();
-    cube_layer_.orientation.w = 1.0F;
+    for (auto &view : face_views) {
+        view.destroy();
+    }
 }
 
 void movement_renderer::create_projection_resources() {
@@ -407,41 +434,39 @@ void movement_renderer::create_projection_views() {
 }
 
 void movement_renderer::create_projection_pipeline() {
-    if (!session_context_.cube_supported) {
-        skybox_pipeline_ =
-            vkz::make_graphics_pipeline_builder(device())
-                .shader_stage()
-                    .vertex_shader(shader_source("movement_skybox.vert"))
-                    .fragment_shader(shader_source("movement_skybox.frag"))
-                .vertex_input_state()
-                .input_assembly_state()
-                    .triangles()
-                .viewport_state()
-                    .viewport()
-                        .origin(0, 0)
-                        .dimension(projection_width, projection_height)
-                        .min_depth(0.0F)
-                        .max_depth(1.0F)
-                    .scissor()
-                        .offset(0, 0)
-                        .extent(projection_width, projection_height)
-                .rasterization_state()
-                    .polygon_mode_fill()
-                    .cull_none()
-                .multisample_state()
-                    .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
-                .color_blend_state()
-                    .attachment()
-                        .add()
-                .layout()
-                    .add_descriptor_set_layout(descriptor_layout_)
-                    .add_push_constant_range(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
-                .dynamic_render_pass()
-                    .add_color_attachment(projection_format)
-                .name("movement_skybox")
-                .build();
-        skybox_pipeline_.descriptor_sets = {descriptor_set_};
-    }
+    skybox_pipeline_ =
+        vkz::make_graphics_pipeline_builder(device())
+            .shader_stage()
+                .vertex_shader(shader_source("movement_skybox.vert"))
+                .fragment_shader(shader_source("movement_skybox.frag"))
+            .vertex_input_state()
+            .input_assembly_state()
+                .triangles()
+            .viewport_state()
+                .viewport()
+                    .origin(0, 0)
+                    .dimension(projection_width, projection_height)
+                    .min_depth(0.0F)
+                    .max_depth(1.0F)
+                .scissor()
+                    .offset(0, 0)
+                    .extent(projection_width, projection_height)
+            .rasterization_state()
+                .polygon_mode_fill()
+                .cull_none()
+            .multisample_state()
+                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+            .color_blend_state()
+                .attachment()
+                    .add()
+            .layout()
+                .add_descriptor_set_layout(descriptor_layout_)
+                .add_push_constant_range(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
+            .dynamic_render_pass()
+                .add_color_attachment(projection_format)
+            .name("movement_skybox")
+            .build();
+    skybox_pipeline_.descriptor_sets = {descriptor_set_};
 
     floor_pipeline_ =
         vkz::make_graphics_pipeline_builder(device())
@@ -598,6 +623,42 @@ void movement_renderer::prepare_render(VkCommandBuffer command_buffer, VkImage i
     const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
     vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+}
+
+void movement_renderer::create_cubemap_pipeline() {
+    cubemap_pipeline_ =
+        vkz::make_graphics_pipeline_builder(device())
+            .shader_stage()
+                .vertex_shader(shader_source("movement_skybox.vert"))
+                .fragment_shader(shader_source("movement_skybox.frag"))
+            .vertex_input_state()
+            .input_assembly_state()
+                .triangles()
+            .viewport_state()
+                .viewport()
+                    .origin(0, 0)
+                    .dimension(cube_size, cube_size)
+                    .min_depth(0.0F)
+                    .max_depth(1.0F)
+                .scissor()
+                    .offset(0, 0)
+                    .extent(cube_size, cube_size)
+            .rasterization_state()
+                .polygon_mode_fill()
+                .cull_none()
+            .multisample_state()
+                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+            .color_blend_state()
+                .attachment()
+                    .add()
+            .layout()
+                .add_descriptor_set_layout(descriptor_layout_)
+                .add_push_constant_range(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
+            .dynamic_render_pass()
+                .add_color_attachment(cube_format)
+            .name("movement_cubemap")
+            .build();
+    cubemap_pipeline_.descriptor_sets = {descriptor_set_};
 }
 
 int main() {
