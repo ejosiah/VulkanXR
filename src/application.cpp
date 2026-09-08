@@ -7,12 +7,39 @@
 #include <spdlog/spdlog.h>
 
 #include <exception>
+#include <stdexcept>
 #include <utility>
 
 namespace vxr {
 
-    application::application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory)
-        : context_builder_{context_builder}, session_config_{session_config}, renderer_factory_{std::move(renderer_factory)} {
+    application::application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory, mirror_config mirror_config)
+        : context_builder_{context_builder}, session_config_{session_config}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
+        if (!mirror_config_.enabled) {
+            return;
+        }
+
+        glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+        window_.reset(glfwCreateWindow(static_cast<int>(mirror_config_.width), static_cast<int>(mirror_config_.height), mirror_config_.title.c_str(), nullptr, nullptr));
+        if (!window_) {
+            throw std::runtime_error{"Failed to create the VulkanXR mirror window"};
+        }
+
+        surface_provider_ = std::make_unique<vkz::glfw_surface_provider>(window_.get());
+        context_builder_.surface(*surface_provider_);
+        context_builder_.add_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        if (mirror_config_.multiview) {
+            VkPhysicalDeviceMultiviewFeatures multiview{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES};
+            multiview.multiview = VK_TRUE;
+            context_builder_.add_extension(multiview);
+        }
+        std::uint32_t extension_count{};
+        const char **extensions = glfwGetRequiredInstanceExtensions(&extension_count);
+        if (!extensions) {
+            throw std::runtime_error{"GLFW could not provide the Vulkan instance extensions required by the mirror"};
+        }
+        for (std::uint32_t index = 0; index < extension_count; ++index) {
+            context_builder_.add_instance_extension(extensions[index]);
+        }
     }
 
     void application::run() {
@@ -27,11 +54,25 @@ namespace vxr {
                     throw fatal_error{"The renderer factory returned a null renderer"};
                 }
 
-                session::service session_service{xr_context, session_context, session_config_, *renderer};
+                std::unique_ptr<mirror> desktop_mirror;
+                if (mirror_config_.enabled) {
+                    desktop_mirror = std::make_unique<mirror>(window_.get(), xr_context, session_context, mirror_config_);
+                }
+
+                session::service session_service{xr_context, session_context, session_config_, *renderer, desktop_mirror.get()};
                 session_service.init();
 
                 auto event = make_struct<XrEventDataBuffer>();
                 while (!shutdown_requested_ && session_service.is_running()) {
+                    if (desktop_mirror) {
+                        desktop_mirror->poll_events();
+                        if (desktop_mirror->should_close()) {
+                            shutdown_requested_ = true;
+                            session_service.terminate();
+                            break;
+                        }
+                    }
+
                     while (poll_events(xr_context, event)) {
                         switch (event.type) {
                         case XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED:

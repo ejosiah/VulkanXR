@@ -49,6 +49,7 @@ add_library(vulkanxr STATIC
     src/vxr/swapchain.hpp
     src/vxr/extension_dispatch.hpp
     src/vxr/font_pipeline.hpp
+    src/vxr/mirror.hpp
     src/vxr/context.hpp
     src/vxr/models.hpp
     src/vxr/transforms.hpp
@@ -59,6 +60,7 @@ add_library(vulkanxr STATIC
     src/font_pipeline.cpp
     src/context.cpp
     src/input.cpp
+    src/mirror.cpp
     src/session_service.cpp
     src/swapchain.cpp
 )

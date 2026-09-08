@@ -12,6 +12,7 @@
 #include <vxr/font_pipeline.hpp>
 #include <vxr/input.hpp>
 #include <vxr/math.hpp>
+#include <vxr/mirror.hpp>
 #include <vxr/action.hpp>
 #include <vxr/context.hpp>
 #include <vxr/models.hpp>

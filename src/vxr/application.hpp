@@ -2,6 +2,7 @@
 
 #include <vxr/backoff.hpp>
 #include <vxr/context.hpp>
+#include <vxr/mirror.hpp>
 #include <vxr/renderer.hpp>
 #include <vxr/session_config.hpp>
 
@@ -14,7 +15,7 @@ namespace vxr {
 
     class application {
       public:
-        application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory);
+        application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
 
         void run();
 
@@ -26,6 +27,10 @@ namespace vxr {
         context::builder &context_builder_;
         const session::config &session_config_;
         renderer_factory renderer_factory_;
+        mirror_config mirror_config_;
+        vkz::glfw_runtime windowing_;
+        std::unique_ptr<GLFWwindow, vkz::glfw_window_deleter> window_;
+        std::unique_ptr<vkz::glfw_surface_provider> surface_provider_;
         backoff backoff_{"Failed to create OpenXR context"};
         bool shutdown_requested_{};
     };

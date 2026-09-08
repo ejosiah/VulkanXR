@@ -1,6 +1,7 @@
 #include <vxr/session_service.hpp>
 
 #include <vxr/openxr_helpers.hpp>
+#include <vxr/mirror.hpp>
 #include <vxr/status.hpp>
 
 #include <spdlog/spdlog.h>
@@ -260,6 +261,8 @@ namespace vxr::session {
         check(xrBeginFrame(service_.session_, &begin_info), "xrBeginFrame");
         layers composition_layers;
         if (frame_state.shouldRender == XR_TRUE) {
+            std::map<XrSwapchain, std::uint32_t> acquired_images;
+            std::vector<XrSwapchain> acquired_swapchains;
             begin_frame();
             auto views = locate_views(service_.session_context_.base_space, frame_state.predictedDisplayTime);
             service_.session_context_.views = views.views;
@@ -272,6 +275,8 @@ namespace vxr::session {
                 auto acquire_info = make_struct<XrSwapchainImageAcquireInfo>();
                 std::uint32_t image_index{};
                 check(xrAcquireSwapchainImage(swapchain.handle(), &acquire_info, &image_index), "xrAcquireSwapchainImage");
+                acquired_images[swapchain.handle()] = image_index;
+                acquired_swapchains.push_back(swapchain.handle());
                 auto image_wait_info = make_struct<XrSwapchainImageWaitInfo>();
                 image_wait_info.timeout = XR_INFINITE_DURATION;
                 check(xrWaitSwapchainImage(swapchain.handle(), &image_wait_info), "xrWaitSwapchainImage");
@@ -282,6 +287,8 @@ namespace vxr::session {
                     depth_swapchain = &service_.session_context_.swapchains.at(swapchain.create_info().depth_);
                     std::uint32_t depth_image_index{};
                     check(xrAcquireSwapchainImage(depth_swapchain->handle(), &acquire_info, &depth_image_index), "xrAcquireSwapchainImage depth");
+                    acquired_images[depth_swapchain->handle()] = depth_image_index;
+                    acquired_swapchains.push_back(depth_swapchain->handle());
                     check(xrWaitSwapchainImage(depth_swapchain->handle(), &image_wait_info), "xrWaitSwapchainImage depth");
                     depth_image = image_id{depth_swapchain->handle(), depth_image_index};
                 }
@@ -289,13 +296,16 @@ namespace vxr::session {
                 render_frame({{swapchain.handle(), image_index}, views, service_.session_context_.base_space, frame_state.predictedDisplayTime, frame_state.predictedDisplayPeriod, depth_image},
                              composition_layers);
 
-                auto release_info = make_struct<XrSwapchainImageReleaseInfo>();
-                if (depth_swapchain) {
-                    check(xrReleaseSwapchainImage(depth_swapchain->handle(), &release_info), "xrReleaseSwapchainImage depth");
-                }
-                check(xrReleaseSwapchainImage(swapchain.handle(), &release_info), "xrReleaseSwapchainImage");
             }
             end_frame();
+            std::ranges::sort(composition_layers, {}, &layer::position);
+            if (service_.mirror_) {
+                service_.mirror_->render(composition_layers, acquired_images);
+            }
+            auto release_info = make_struct<XrSwapchainImageReleaseInfo>();
+            for (auto handle = acquired_swapchains.rbegin(); handle != acquired_swapchains.rend(); ++handle) {
+                check(xrReleaseSwapchainImage(*handle, &release_info), "xrReleaseSwapchainImage");
+            }
         }
 
         std::ranges::sort(composition_layers, {}, &layer::position);

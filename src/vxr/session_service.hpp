@@ -10,6 +10,12 @@
 #include <map>
 #include <vector>
 
+namespace vxr {
+
+    class mirror;
+
+} // namespace vxr
+
 namespace vxr::session {
 
     class service;
@@ -121,8 +127,8 @@ namespace vxr::session {
 
     class service {
       public:
-        service(vxr::context &xr_context, context &session_context, const config &configuration, renderer &renderer)
-            : xr_context_{xr_context}, session_context_{session_context}, configuration_{configuration}, renderer_{renderer}, unknown_state_{*this}, idle_state_{*this}, ready_state_{*this},
+        service(vxr::context &xr_context, context &session_context, const config &configuration, renderer &renderer, vxr::mirror *mirror = nullptr)
+            : xr_context_{xr_context}, session_context_{session_context}, configuration_{configuration}, renderer_{renderer}, mirror_{mirror}, unknown_state_{*this}, idle_state_{*this}, ready_state_{*this},
               synchronized_state_{*this}, visible_state_{*this}, focused_state_{*this}, stopping_state_{*this}, exiting_state_{*this}, loss_pending_state_{*this} {
             states_ = {{XR_SESSION_STATE_UNKNOWN, &unknown_state_},           {XR_SESSION_STATE_IDLE, &idle_state_},       {XR_SESSION_STATE_READY, &ready_state_},
                        {XR_SESSION_STATE_SYNCHRONIZED, &synchronized_state_}, {XR_SESSION_STATE_VISIBLE, &visible_state_}, {XR_SESSION_STATE_FOCUSED, &focused_state_},
@@ -181,6 +187,7 @@ namespace vxr::session {
         context &session_context_;
         const config &configuration_;
         renderer &renderer_;
+        vxr::mirror *mirror_{};
         XrSession session_{XR_NULL_HANDLE};
         bool termination_requested_{};
         std::vector<action_set_binding> action_set_bindings_;
