@@ -17,6 +17,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <string_view>
 
 CMRC_DECLARE(vxr_shaders);
 
@@ -177,8 +178,8 @@ const char *controller_renderer::name() const noexcept {
     return "Controller Input";
 }
 
-std::unique_ptr<vxr::renderer> controller_renderer::create(vxr::context &xr_context, vxr::session::context &session_context) {
-    return std::make_unique<controller_renderer>(xr_context, session_context);
+std::unique_ptr<vxr::renderer> controller_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
+    return std::make_unique<controller_renderer>(rendering_context, session_context);
 }
 
 vxr::session::config controller_renderer::session_config() {
@@ -275,15 +276,20 @@ void controller_renderer::draw(std::uint32_t image_index) {
     command_pool_.destroy(command_buffer);
 }
 
-int main() {
+int main(int argc, char **argv) {
     spdlog::info("{} controller input (Vulkan header version {})", vxr::project_name(), vxr::vulkan_header_version());
-    auto context_builder = vxr::context::create();
-    context_builder
-        .app_name("VulkanXR Controller Input")
-        .vulkan_api_version(VK_API_VERSION_1_2)
-        .openxr_api_version(XR_API_VERSION_1_0);
-    auto session_config = controller_renderer::session_config();
-    vxr::application application{context_builder, session_config, controller_renderer::create};
-    application.run();
+
+    auto application  =
+        vxr::application_builder{}
+            .app_name("VulkanXR Controller Input")
+            .vulkan_api_version(VK_API_VERSION_1_2)
+            .openxr_api_version(XR_API_VERSION_1_0)
+            .session(controller_renderer::session_config())
+            .renderer(controller_renderer::create)
+            .mode(argc > 1 && std::string_view{argv[1]} == "--desktop" ? vxr::application_mode::desktop : vxr::application_mode::vr)
+        .build();
+
+    application->run();
+
     return EXIT_SUCCESS;
 }

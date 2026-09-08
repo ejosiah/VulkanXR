@@ -272,8 +272,8 @@ const char *movement_renderer::name() const noexcept {
     return "Movement";
 }
 
-std::unique_ptr<vxr::renderer> movement_renderer::create(vxr::context &xr_context, vxr::session::context &session_context) {
-    return std::make_unique<movement_renderer>(xr_context, session_context);
+std::unique_ptr<vxr::renderer> movement_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
+    return std::make_unique<movement_renderer>(rendering_context, session_context);
 }
 
 vxr::session::config movement_renderer::session_config() {
@@ -661,15 +661,20 @@ void movement_renderer::create_cubemap_pipeline() {
     cubemap_pipeline_.descriptor_sets = {descriptor_set_};
 }
 
-int main() {
+int main(int argc, char **argv) {
     spdlog::info("{} movement (Vulkan header version {})", vxr::project_name(), vxr::vulkan_header_version());
-    auto context_builder = vxr::context::create();
-    context_builder
-        .app_name("VulkanXR Movement")
-        .vulkan_api_version(VK_API_VERSION_1_2)
-        .openxr_api_version(XR_API_VERSION_1_0);
-    auto session_config = movement_renderer::session_config();
-    vxr::application application{context_builder, session_config, movement_renderer::create};
-    application.run();
+
+    auto application  =
+        vxr::application_builder{}
+            .app_name("VulkanXR Movement")
+            .vulkan_api_version(VK_API_VERSION_1_2)
+            .openxr_api_version(XR_API_VERSION_1_0)
+            .session(movement_renderer::session_config())
+            .renderer(movement_renderer::create)
+            .mode(argc > 1 && std::string_view{argv[1]} == "--desktop" ? vxr::application_mode::desktop : vxr::application_mode::vr)
+        .build();
+
+    application->run();
+
     return EXIT_SUCCESS;
 }

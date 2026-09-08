@@ -41,8 +41,8 @@ namespace vxr {
 
     } // namespace
 
-    mirror::mirror(GLFWwindow *window, context &xr_context, session::context &session_context, mirror_config config)
-        : xr_context_{xr_context}, session_context_{session_context}, config_{std::move(config)}, app_{window, xr_context.vulkan_context(), config_.vsync} {
+    mirror::mirror(GLFWwindow *window, rendering_context &rendering_context, session::context &session_context, mirror_config config)
+        : rendering_context_{rendering_context}, session_context_{session_context}, config_{std::move(config)}, app_{window, rendering_context.vulkan_context(), config_.vsync} {
     }
 
     mirror::~mirror() {
@@ -51,18 +51,18 @@ namespace vxr {
 
     void mirror::init() {
         swapchain_ = app_.create_swapchain();
-        swapchain_views_ = vkz::create_swapchain_image_views(xr_context_.device(), *swapchain_);
-        command_pool_.init(xr_context_.device(), app_.queue_family_index(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, app_.graphics_queue());
+        swapchain_views_ = vkz::create_swapchain_image_views(rendering_context_.device(), *swapchain_);
+        command_pool_.init(rendering_context_.device(), app_.queue_family_index(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, app_.graphics_queue());
         descriptor_layout_ =
-            vkz::make_descriptor_set_layout_builder(xr_context_.device())
+            vkz::make_descriptor_set_layout_builder(rendering_context_.device())
                 .name("mirror_source")
                 .binding(0)
                     .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
                     .descriptor_count(1)
                     .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
                 .create_layout();
-        descriptor_pool_ = vkz::descriptor_pool{xr_context_.device(), 64, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64}}};
-        sampler_ = vkz::sampler::builder(xr_context_.device()).mag_filter(VK_FILTER_LINEAR).min_filter(VK_FILTER_LINEAR).address_mode(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE).build();
+        descriptor_pool_ = vkz::descriptor_pool{rendering_context_.device(), 64, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64}}};
+        sampler_ = vkz::sampler::builder(rendering_context_.device()).mag_filter(VK_FILTER_LINEAR).min_filter(VK_FILTER_LINEAR).address_mode(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE).build();
         create_pipelines();
         initialized_ = true;
         spdlog::info("Desktop mirror initialized at {}x{}{}", swapchain_->width(), swapchain_->height(), config_.multiview ? " with multiview presentation" : "");
@@ -72,8 +72,8 @@ namespace vxr {
         if (!initialized_) {
             return;
         }
-        if (xr_context_.device()) {
-            vkDeviceWaitIdle(xr_context_.device().logical);
+        if (rendering_context_.device()) {
+            vkDeviceWaitIdle(rendering_context_.device().logical);
         }
         projection_pipeline_.destroy();
         cube_pipeline_.destroy();
@@ -83,7 +83,7 @@ namespace vxr {
         descriptor_pool_.destroy();
         descriptor_layout_.destroy();
         command_pool_.deinit();
-        vkz::destroy_image_views(xr_context_.device().logical, swapchain_views_);
+        vkz::destroy_image_views(rendering_context_.device().logical, swapchain_views_);
         swapchain_views_.clear();
         swapchain_.reset();
         initialized_ = false;
@@ -97,7 +97,7 @@ namespace vxr {
     }
 
     vkz::pipeline mirror::create_pipeline(const std::string &vertex_shader, const std::string &fragment_shader, const std::string &name) {
-        auto builder = vkz::make_graphics_pipeline_builder(xr_context_.device());
+        auto builder = vkz::make_graphics_pipeline_builder(rendering_context_.device());
         builder
             .shader_stage()
                 .vertex_shader(shader_source(vertex_shader))
@@ -179,15 +179,15 @@ namespace vxr {
         std::uint32_t swapchain_image_index{};
         VkFence acquire_fence{};
         const VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-        VKZ_CHECK_VULKAN(vkCreateFence(xr_context_.device().logical, &fence_info, nullptr, &acquire_fence));
-        const VkResult acquire_result = vkAcquireNextImageKHR(xr_context_.device().logical, swapchain_->handle(), UINT64_MAX, VK_NULL_HANDLE, acquire_fence, &swapchain_image_index);
+        VKZ_CHECK_VULKAN(vkCreateFence(rendering_context_.device().logical, &fence_info, nullptr, &acquire_fence));
+        const VkResult acquire_result = vkAcquireNextImageKHR(rendering_context_.device().logical, swapchain_->handle(), UINT64_MAX, VK_NULL_HANDLE, acquire_fence, &swapchain_image_index);
         if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
-            vkDestroyFence(xr_context_.device().logical, acquire_fence, nullptr);
+            vkDestroyFence(rendering_context_.device().logical, acquire_fence, nullptr);
             return;
         }
         VKZ_CHECK_VULKAN(acquire_result);
-        VKZ_CHECK_VULKAN(vkWaitForFences(xr_context_.device().logical, 1, &acquire_fence, VK_TRUE, UINT64_MAX));
-        vkDestroyFence(xr_context_.device().logical, acquire_fence, nullptr);
+        VKZ_CHECK_VULKAN(vkWaitForFences(rendering_context_.device().logical, 1, &acquire_fence, VK_TRUE, UINT64_MAX));
+        vkDestroyFence(rendering_context_.device().logical, acquire_fence, nullptr);
 
         const auto command_buffer = command_pool_.create_command_buffer();
         const VkImageSubresourceRange destination_range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
@@ -298,7 +298,7 @@ namespace vxr {
         image.create_info.arrayLayers = source_swapchain.create_info().array_size_;
         image.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         auto view =
-            vkz::image_view::builder(xr_context_.device())
+            vkz::image_view::builder(rendering_context_.device())
                 .image(image)
                 .view_type(view_type)
                 .format(source_swapchain.format())
@@ -312,7 +312,7 @@ namespace vxr {
         vkz::barrier::push_and_flush(command_buffer, image.handle, range, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                                      VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         const auto descriptor_set = descriptor_pool_.allocate(descriptor_layout_);
-        vkz::update_descriptor(xr_context_.device(), {.descriptor_set = descriptor_set, .bindings = {vkz::texture_descriptor{view, sampler_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0}}});
+        vkz::update_descriptor(rendering_context_.device(), {.descriptor_set = descriptor_set, .bindings = {vkz::texture_descriptor{view, sampler_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0}}});
         pipeline.descriptor_sets = {descriptor_set};
         vkz::bind_pipeline(command_buffer, pipeline);
         vkz::push_constants(command_buffer, pipeline, constants);

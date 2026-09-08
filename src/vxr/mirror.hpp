@@ -1,6 +1,6 @@
 #pragma once
 
-#include <vxr/context.hpp>
+#include <vxr/rendering_context.hpp>
 #include <vxr/models.hpp>
 #include <vxr/session_context.hpp>
 
@@ -30,7 +30,7 @@ namespace vxr {
 
     class mirror {
       public:
-        mirror(GLFWwindow *window, context &xr_context, session::context &session_context, mirror_config config);
+        mirror(GLFWwindow *window, rendering_context &rendering_context, session::context &session_context, mirror_config config);
 
         ~mirror();
 
@@ -74,7 +74,7 @@ namespace vxr {
 
         [[nodiscard]] std::uint32_t image_index(XrSwapchain handle, const std::map<XrSwapchain, std::uint32_t> &image_indices) const;
 
-        context &xr_context_;
+        rendering_context &rendering_context_;
         session::context &session_context_;
         mirror_config config_;
         vkz::vulkan_app app_;

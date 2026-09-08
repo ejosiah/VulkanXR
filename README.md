@@ -29,6 +29,20 @@ ctest --preset conan-debug
 For Release, use `cmake-build-release` and `-s build_type=Release`. The generated
 Conan presets are included by `CMakeUserPresets.json`, matching Vista's layout.
 
+## Desktop mode
+
+`vxr::desktop_application` runs a renderer without creating an OpenXR instance. It creates a regular Vulkan context, desktop-owned images exposed through synthetic `vxr::swapchain` handles, and sends the renderer's composition layers to the desktop mirror.
+
+Use `vxr::application_builder` to select the runtime without constructing either application directly. It extends `vxr::context::builder` and adds `.session(...)`, `.renderer(...)`, and `.mode(...)` configuration. The mode can be `vxr::application_mode::vr` or `vxr::application_mode::desktop`, and the window title is taken from `.app_name(...)`.
+
+The movement example can be launched in desktop mode with:
+
+```powershell
+cmake-build-debug\Debug\vulkanxr_movement_example.exe --desktop
+```
+
+The desktop input adapter maps the left controller axes to `W`, `S`, `A`, and `D`, and the right controller axes to the arrow keys. `J`, `K`, `U`, and `I` represent the `A`, `B`, `X`, and `Y` buttons; Enter is Select, Escape is Menu, Shift is Squeeze, and Control is the thumbstick or trackpad click. Left and right triggers use `F` and `/` respectively.
+
 ## TODO
 
 - Handle `XrEventDataReferenceSpaceChangePending`: identify the affected reference-space type and retain the event until `changeTime`. Existing `XrSpace` handles remain valid and must not be recreated. When `poseValid` is `XR_TRUE`, use `poseInPreviousSpace` to preserve continuity for world-locked content; otherwise reset or re-anchor content whose previous-to-new origin relationship cannot be determined.

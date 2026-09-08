@@ -18,7 +18,7 @@ class checkerboard_renderer final : public vxr::renderer {
 
     [[nodiscard]] const char *name() const noexcept override;
 
-    [[nodiscard]] static std::unique_ptr<vxr::renderer> create(vxr::context &xr_context, vxr::session::context &session_context);
+    [[nodiscard]] static std::unique_ptr<vxr::renderer> create(vxr::rendering_context &rendering_context, vxr::session::context &session_context);
 
     [[nodiscard]] static vxr::session::config session_config();
 

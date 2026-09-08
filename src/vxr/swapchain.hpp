@@ -119,6 +119,8 @@ namespace vxr {
 
         swapchain(XrSession session, swapchain_create_info create_info);
 
+        swapchain(swapchain_create_info create_info, std::span<const VkImage> images);
+
         void destroy() noexcept;
 
         [[nodiscard]] XrSwapchain handle() const noexcept {
@@ -157,6 +159,7 @@ namespace vxr {
         swapchain_create_info create_info_;
         XrSwapchain handle_{XR_NULL_HANDLE};
         std::vector<XrSwapchainImageVulkanKHR> images_;
+        void *desktop_handle_{};
     };
 
 } // namespace vxr

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vxr/app.hpp>
 #include <vxr/backoff.hpp>
 #include <vxr/context.hpp>
 #include <vxr/mirror.hpp>
@@ -11,15 +12,15 @@
 
 namespace vxr {
 
-    using renderer_factory = std::function<std::unique_ptr<renderer>(context &, session::context &)>;
+    using renderer_factory = std::function<std::unique_ptr<renderer>(rendering_context &, session::context &)>;
 
-    class application {
+    class application final : public app {
       public:
         application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
 
-        void run();
+        void run() override;
 
-        void shutdown() noexcept;
+        void shutdown() noexcept override;
 
         [[nodiscard]] static bool poll_events(const context &xr_context, XrEventDataBuffer &event);
 
