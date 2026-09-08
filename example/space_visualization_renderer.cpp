@@ -227,12 +227,12 @@ vxr::session::config space_visualization_renderer::session_config() {
             vxr::session::action_set_specification{}
                 .name("main_action_set")
                 .description("Main action set")
-                .add_action("left_hand_pose", vxr::input::location::left_hand, vxr::input::identifier::grip, vxr::input::component::pose, "Left hand grip")
-                .add_action("right_hand_pose", vxr::input::location::right_hand, vxr::input::identifier::grip, vxr::input::component::pose, "Right hand grip")
-                .add_action("left_hand_squeeze", vxr::input::location::left_hand, vxr::input::identifier::squeeze, vxr::input::component::value, "Left hand squeeze")
-                .add_action("right_hand_squeeze", vxr::input::location::right_hand, vxr::input::identifier::squeeze, vxr::input::component::value, "Right hand squeeze")
-                .add_action("vibrate_left", vxr::input::location::left_hand, vxr::output::identifier::haptic, vxr::output::component::vibrate, "Vibrate left hand")
-                .add_action("vibrate_right", vxr::input::location::right_hand, vxr::output::identifier::haptic, vxr::output::component::vibrate, "Vibrate right hand")
+                .add_action("left_hand_pose", vxr::input::simple::layout::left_grip_pose, "Left hand grip")
+                .add_action("right_hand_pose", vxr::input::simple::layout::right_grip_pose, "Right hand grip")
+                .add_action("left_hand_squeeze", vxr::input::oculus_touch::layout::left_squeeze_value, "Left hand squeeze")
+                .add_action("right_hand_squeeze", vxr::input::oculus_touch::layout::right_squeeze_value, "Right hand squeeze")
+                .add_action("vibrate_left", vxr::output::layout::left_haptic, "Vibrate left hand")
+                .add_action("vibrate_right", vxr::output::layout::right_haptic, "Vibrate right hand")
         )
         .add_swapchain(
             vxr::swapchain_create_info{}

@@ -204,12 +204,6 @@ namespace vxr::input {
             return std::nullopt;
         }
 
-        if (value.identifier == identifier::thumb_stick) {
-            binding adjusted = value;
-            adjusted.identifier = identifier::track_pad;
-            return path(adjusted);
-        }
-
         if (value.identifier == identifier::squeeze && value.component == component::value) {
             binding adjusted = value;
             adjusted.identifier = identifier::trigger;

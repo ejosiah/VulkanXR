@@ -95,15 +95,13 @@ namespace vxr::session {
             return *this;
         }
 
-        action_set_specification &add_action(std::string_view action_name, input::location location, input::identifier identifier, input::component component,
-                                             std::string_view action_description = {}) {
-            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, input::binding{location, identifier, component}});
+        action_set_specification &add_action(std::string_view action_name, input::button button, std::string_view action_description = {}) {
+            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, button});
             return *this;
         }
 
-        action_set_specification &add_action(std::string_view action_name, input::location location, output::identifier identifier, output::component component,
-                                             std::string_view action_description = {}) {
-            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, output::binding{location, identifier, component}});
+        action_set_specification &add_action(std::string_view action_name, output::button button, std::string_view action_description = {}) {
+            actions.insert({std::string{action_name}, action_description.empty() ? std::string{action_name} : std::string{action_description}, button});
             return *this;
         }
 

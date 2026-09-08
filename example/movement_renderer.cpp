@@ -112,11 +112,12 @@ void movement_renderer::reference_space_changed(const XrEventDataReferenceSpaceC
 
 void movement_renderer::update_teleport(const vxr::action_set &actions) {
     constexpr float activation_threshold = 0.7F;
-    const auto &right_y = actions.get("right_teleport_y");
+    const bool vive_active = vive_controller_active();
+    const auto &right_y = actions.get(vive_active ? "vive_right_teleport_y" : "right_teleport_y");
     const float right_value = right_y.active ? right_y.value<float>() : 0.0F;
-    const auto &right_click = actions.get("right_teleport_click");
+    const auto &right_click = actions.get("vive_right_teleport_click");
     const bool vive_trackpad_pressed = right_click.active && right_click.value<bool>();
-    const bool right_active = right_value > activation_threshold && (!vive_controller_active() || vive_trackpad_pressed);
+    const bool right_active = right_value > activation_threshold && (!vive_active || vive_trackpad_pressed);
 
     if (!right_active) {
         if (teleport_.active && teleport_.valid) {
@@ -127,7 +128,7 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
         return;
     }
 
-    const auto &aim = actions.get("right_aim_pose");
+    const auto &aim = actions.get(vive_active ? "vive_right_aim_pose" : "right_aim_pose");
     teleport_.active = true;
     teleport_.valid = false;
     if (!aim.active) {
@@ -141,11 +142,12 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
 }
 
 void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
-    const auto &move_x = actions.get("left_move_x");
-    const auto &move_y = actions.get("left_move_y");
-    const auto &move_click = actions.get("left_move_click");
+    const bool vive_active = vive_controller_active();
+    const auto &move_x = actions.get(vive_active ? "vive_left_move_x" : "left_move_x");
+    const auto &move_y = actions.get(vive_active ? "vive_left_move_y" : "left_move_y");
+    const auto &move_click = actions.get("vive_left_move_click");
     const bool vive_trackpad_pressed = move_click.active && move_click.value<bool>();
-    const bool movement_active = !vive_controller_active() || vive_trackpad_pressed;
+    const bool movement_active = !vive_active || vive_trackpad_pressed;
     const float x = movement_active && move_x.active ? move_x.value<float>() : 0.0F;
     const float y = movement_active && move_y.active ? move_y.value<float>() : 0.0F;
     glm::vec3 forward = head_orientation_ * glm::vec3{0.0F, 0.0F, -1.0F};
@@ -169,10 +171,11 @@ void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
         return;
     }
 
-    const auto &turn_x = actions.get("right_turn_x");
-    const auto &turn_click = actions.get("right_teleport_click");
+    const bool vive_active = vive_controller_active();
+    const auto &turn_x = actions.get(vive_active ? "vive_right_turn_x" : "right_turn_x");
+    const auto &turn_click = actions.get("vive_right_teleport_click");
     const bool vive_trackpad_pressed = turn_click.active && turn_click.value<bool>();
-    const bool turning_active = !vive_controller_active() || vive_trackpad_pressed;
+    const bool turning_active = !vive_active || vive_trackpad_pressed;
     const float x = turning_active && turn_x.active ? turn_x.value<float>() : 0.0F;
     if (!tracked_head_in_world_valid_ || std::abs(x) < 0.15F) {
         return;
@@ -271,13 +274,18 @@ vxr::session::config movement_renderer::session_config() {
             vxr::session::action_set_specification{}
                 .name("teleportation")
                 .description("Movement and teleportation controls")
-                .add_action("right_aim_pose", vxr::input::location::right_hand, vxr::input::identifier::aim, vxr::input::component::pose, "Right controller aim")
-                .add_action("right_turn_x", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Turn left and right")
-                .add_action("right_teleport_y", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Right teleport")
-                .add_action("right_teleport_click", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Right teleport activation")
-                .add_action("left_move_x", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Strafe left and right")
-                .add_action("left_move_y", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Move forward and backward")
-                .add_action("left_move_click", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Left movement activation")
+                .add_action("vive_right_aim_pose", vxr::input::htc_vive::layout::right_aim_pose, "Vive right controller aim")
+                .add_action("vive_right_turn_x", vxr::input::htc_vive::layout::right_trackpad_x, "Vive turn left and right")
+                .add_action("vive_right_teleport_y", vxr::input::htc_vive::layout::right_trackpad_y, "Vive right teleport")
+                .add_action("vive_right_teleport_click", vxr::input::htc_vive::layout::right_trackpad_click, "Vive right teleport activation")
+                .add_action("vive_left_move_x", vxr::input::htc_vive::layout::left_trackpad_x, "Vive strafe left and right")
+                .add_action("vive_left_move_y", vxr::input::htc_vive::layout::left_trackpad_y, "Vive move forward and backward")
+                .add_action("vive_left_move_click", vxr::input::htc_vive::layout::left_trackpad_click, "Vive left movement activation")
+                .add_action("right_aim_pose", vxr::input::oculus_touch::layout::right_aim_pose, "Right controller aim")
+                .add_action("right_turn_x", vxr::input::oculus_touch::layout::right_thumbstick_x, "Turn left and right")
+                .add_action("right_teleport_y", vxr::input::oculus_touch::layout::right_thumbstick_y, "Right teleport")
+                .add_action("left_move_x", vxr::input::oculus_touch::layout::left_thumbstick_x, "Strafe left and right")
+                .add_action("left_move_y", vxr::input::oculus_touch::layout::left_thumbstick_y, "Move forward and backward")
         )
         .add_swapchain(
             vxr::swapchain_create_info{}
