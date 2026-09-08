@@ -81,7 +81,7 @@ void controller_renderer::init() {
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
     vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_, .bindings = {vkz::descriptor<vkz::buffer_descriptor>(text_buffer_, 0)}});
     create_image_views();
-    create_pipeline();
+    font_pipeline_ = vxr::font_pipeline::create({device(), descriptor_layout_, format, {width, height}, shader_source("font.vert"), shader_source("font.frag"), "controller_font"});
 
     auto &swapchain = get_swapchain("controller_text");
     layer_ = vxr::make_struct<XrCompositionLayerQuad>();
@@ -100,7 +100,7 @@ void controller_renderer::cleanup() {
     }
     vkDeviceWaitIdle(device().logical);
     command_pool_.deinit();
-    pipeline_.destroy();
+    font_pipeline_.destroy();
     for (auto &view : image_views_) {
         view.destroy();
     }
@@ -260,41 +260,6 @@ void controller_renderer::create_image_views() {
     }
 }
 
-void controller_renderer::create_pipeline() {
-    pipeline_ =
-        vkz::make_graphics_pipeline_builder(device())
-            .shader_stage()
-                .vertex_shader(shader_source("controller.vert"))
-                .fragment_shader(shader_source("controller.frag"))
-            .vertex_input_state()
-            .input_assembly_state()
-                .triangles()
-            .viewport_state()
-                .viewport()
-                    .origin(0, 0)
-                    .dimension(width, height)
-                    .min_depth(0.0F)
-                    .max_depth(1.0F)
-                .scissor()
-                    .offset(0, 0)
-                    .extent(static_cast<std::int32_t>(width), static_cast<std::int32_t>(height))
-            .rasterization_state()
-                .polygon_mode_fill()
-                .cull_none()
-            .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
-            .color_blend_state()
-                .attachment()
-                    .add()
-            .layout()
-                .add_descriptor_set_layout(descriptor_layout_)
-            .dynamic_render_pass()
-                .add_color_attachment(format)
-            .name("controller_text")
-            .build();
-    pipeline_.descriptor_sets = {descriptor_set_};
-}
-
 void controller_renderer::draw(std::uint32_t image_index) {
     const auto command_buffer = command_pool_.create_command_buffer();
     auto image = get_swapchain("controller_text").images()[image_index].image;
@@ -303,7 +268,7 @@ void controller_renderer::draw(std::uint32_t image_index) {
                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     const vkz::render_info render_info{{{image_views_.at(image_index), format, {0.02F, 0.03F, 0.05F, 1.0F}}}, {}, {}, {width, height}};
     vkz::render(command_buffer, render_info, [&] {
-        vkz::bind_pipeline(command_buffer, pipeline_);
+        font_pipeline_.bind(command_buffer, descriptor_set_, {{0.02F, 0.03F, 0.05F, 1.0F}});
         vkz::draw(command_buffer, 3);
     });
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <vxr/renderer.hpp>
+#include <vxr/font_pipeline.hpp>
 #include <vxr/session_config.hpp>
 
 #include <vulkanizer/commands.hpp>
@@ -44,8 +45,6 @@ class controller_renderer final : public vxr::renderer {
 
     void create_image_views();
 
-    void create_pipeline();
-
     void draw(std::uint32_t image_index);
 
     vkz::vma_memory_allocator allocator_{};
@@ -54,7 +53,7 @@ class controller_renderer final : public vxr::renderer {
     vkz::descriptor_pool descriptor_pool_{};
     vkz::descriptor_set_layout descriptor_layout_{};
     vkz::descriptor_set descriptor_set_{};
-    vkz::pipeline pipeline_{};
+    vxr::font_pipeline font_pipeline_{};
     vkz::command_pool command_pool_{};
     std::vector<vkz::image_view> image_views_;
     XrCompositionLayerQuad layer_{};

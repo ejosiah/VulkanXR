@@ -6,6 +6,10 @@
 layout(location = 0) in vec2 uv;
 layout(location = 0) out vec4 output_color;
 
+layout(push_constant) uniform constants {
+    vec4 background_color;
+} pc;
+
 layout(std430, binding = 0) readonly buffer text_data {
     uint character_count;
     uint characters[];
@@ -56,7 +60,7 @@ void main() {
     const int column = text_pixel.x / 16;
     const int row = text_pixel.y / 16;
     if (text_pixel.x < 0 || text_pixel.y < 0 || column < 0 || column >= 60 || row < 0) {
-        output_color = vec4(0.02, 0.03, 0.05, 1.0);
+        output_color = pc.background_color;
         return;
     }
 
@@ -84,5 +88,5 @@ void main() {
     const uint ascii = encoded_character & 0xffu;
     const ivec2 glyph_pixel = ivec2((text_pixel.x % 16) / 2, (text_pixel.y % 16) / 2);
     const vec4 text_color = (encoded_character & 0x100u) != 0u ? vec4(1.0, 0.85, 0.15, 1.0) : vec4(0.35, 0.95, 0.75, 1.0);
-    output_color = font_lookup(ascii, glyph_pixel) ? text_color : vec4(0.02, 0.03, 0.05, 1.0);
+    output_color = font_lookup(ascii, glyph_pixel) ? text_color : pc.background_color;
 }
