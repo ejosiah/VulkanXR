@@ -86,6 +86,10 @@ class movement_renderer final : public vxr::renderer {
 
     void update_camera_movement(const vxr::action_set &actions);
 
+    void update_camera_turn(const vxr::action_set &actions);
+
+    [[nodiscard]] bool vive_controller_active() const;
+
     [[nodiscard]] vxr::pose world_pose(const vxr::pose &tracking_pose) const noexcept;
 
     [[nodiscard]] static vxr::pose head_pose(const std::vector<XrView> &views);

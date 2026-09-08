@@ -96,8 +96,9 @@ void movement_renderer::cleanup() {
 }
 
 std::vector<vxr::vibration> movement_renderer::set(const vxr::action_set &actions) {
-    update_camera_movement(actions);
     update_teleport(actions);
+    update_camera_turn(actions);
+    update_camera_movement(actions);
     return {};
 }
 
@@ -113,7 +114,9 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
     constexpr float activation_threshold = 0.7F;
     const auto &right_y = actions.get("right_teleport_y");
     const float right_value = right_y.active ? right_y.value<float>() : 0.0F;
-    const bool right_active = right_value > activation_threshold;
+    const auto &right_click = actions.get("right_teleport_click");
+    const bool vive_trackpad_pressed = right_click.active && right_click.value<bool>();
+    const bool right_active = right_value > activation_threshold && (!vive_controller_active() || vive_trackpad_pressed);
 
     if (!right_active) {
         if (teleport_.active && teleport_.valid) {
@@ -140,8 +143,11 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
 void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
     const auto &move_x = actions.get("left_move_x");
     const auto &move_y = actions.get("left_move_y");
-    const float x = move_x.active ? move_x.value<float>() : 0.0F;
-    const float y = move_y.active ? move_y.value<float>() : 0.0F;
+    const auto &move_click = actions.get("left_move_click");
+    const bool vive_trackpad_pressed = move_click.active && move_click.value<bool>();
+    const bool movement_active = !vive_controller_active() || vive_trackpad_pressed;
+    const float x = movement_active && move_x.active ? move_x.value<float>() : 0.0F;
+    const float y = movement_active && move_y.active ? move_y.value<float>() : 0.0F;
     glm::vec3 forward = head_orientation_ * glm::vec3{0.0F, 0.0F, -1.0F};
     glm::vec3 right = head_orientation_ * glm::vec3{1.0F, 0.0F, 0.0F};
     forward.y = 0.0F;
@@ -156,6 +162,37 @@ void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
     const glm::vec3 movement = (forward * y + right * x) * movement_speed * frame_seconds_;
     world_offset_ += movement;
     head_position_ += movement;
+}
+
+void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
+    if (teleport_.active) {
+        return;
+    }
+
+    const auto &turn_x = actions.get("right_turn_x");
+    const auto &turn_click = actions.get("right_teleport_click");
+    const bool vive_trackpad_pressed = turn_click.active && turn_click.value<bool>();
+    const bool turning_active = !vive_controller_active() || vive_trackpad_pressed;
+    const float x = turning_active && turn_x.active ? turn_x.value<float>() : 0.0F;
+    if (!tracked_head_in_world_valid_ || std::abs(x) < 0.15F) {
+        return;
+    }
+
+    constexpr float turn_speed = 1.5F;
+    const auto rotation = glm::angleAxis(-x * turn_speed * frame_seconds_, glm::vec3{0.0F, 1.0F, 0.0F});
+    vxr::pose turn;
+    turn.orientation = rotation;
+    turn.position = tracked_head_in_world_.position - rotation * tracked_head_in_world_.position;
+    world_from_tracking_ = vxr::compose(turn, world_from_tracking_);
+    tracked_head_in_world_ = vxr::compose(turn, tracked_head_in_world_);
+    head_orientation_ = tracked_head_in_world_.orientation;
+}
+
+bool movement_renderer::vive_controller_active() const {
+    constexpr std::string_view vive_profile = "/interaction_profiles/htc/vive_controller";
+    return std::ranges::any_of(session_context_.interaction_profiles, [](const auto &entry) {
+        return entry.second == vive_profile;
+    });
 }
 
 vxr::pose movement_renderer::world_pose(const vxr::pose &tracking_pose) const noexcept {
@@ -235,9 +272,12 @@ vxr::session::config movement_renderer::session_config() {
                 .name("teleportation")
                 .description("Movement and teleportation controls")
                 .add_action("right_aim_pose", vxr::input::location::right_hand, vxr::input::identifier::aim, vxr::input::component::pose, "Right controller aim")
+                .add_action("right_turn_x", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Turn left and right")
                 .add_action("right_teleport_y", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Right teleport")
+                .add_action("right_teleport_click", vxr::input::location::right_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Right teleport activation")
                 .add_action("left_move_x", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::x, "Strafe left and right")
                 .add_action("left_move_y", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::y, "Move forward and backward")
+                .add_action("left_move_click", vxr::input::location::left_hand, vxr::input::identifier::thumb_stick, vxr::input::component::click, "Left movement activation")
         )
         .add_swapchain(
             vxr::swapchain_create_info{}
