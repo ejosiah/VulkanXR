@@ -23,7 +23,7 @@ namespace vxr {
         std::string title{"VulkanXR Mirror"};
         bool enabled{true};
         bool multiview{};
-        bool vsync{true};
+        bool vsync{false};
         float eye_separation{0.08F};
         float barrel_distortion{0.2F};
     };
