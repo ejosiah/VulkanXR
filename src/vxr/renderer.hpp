@@ -31,6 +31,9 @@ namespace vxr {
         virtual void set(const std::vector<space_location> &space_locations) {
         }
 
+        virtual void reference_space_changed(const XrEventDataReferenceSpaceChangePending &event) {
+        }
+
         virtual std::vector<vibration> set(const action_set &actions) {
             return {};
         }

@@ -18,11 +18,15 @@ class movement_renderer final : public vxr::renderer {
   public:
     using renderer::renderer;
 
+    ~movement_renderer() override;
+
     void init() override;
 
     void cleanup() override;
 
     std::vector<vxr::vibration> set(const vxr::action_set &actions) override;
+
+    void reference_space_changed(const XrEventDataReferenceSpaceChangePending &event) override;
 
     void paused(const vxr::frame_info &frame, vxr::layers &layers) override;
 
@@ -76,9 +80,15 @@ class movement_renderer final : public vxr::renderer {
 
     void render_projection_view(const vxr::frame_info &frame, std::uint32_t view_index);
 
+    void prepare_render(VkCommandBuffer command_buffer, VkImage image, uint32_t view_index);
+
     void update_teleport(const vxr::action_set &actions);
 
     void update_camera_movement(const vxr::action_set &actions);
+
+    [[nodiscard]] vxr::pose world_pose(const vxr::pose &tracking_pose) const noexcept;
+
+    [[nodiscard]] static vxr::pose head_pose(const std::vector<XrView> &views);
 
     [[nodiscard]] static bool intersect_ground(const glm::vec3 &origin, const glm::vec3 &velocity, glm::vec3 &intersection);
 
@@ -103,6 +113,9 @@ class movement_renderer final : public vxr::renderer {
     XrCompositionLayerCubeKHR cube_layer_{};
     teleport_state teleport_{};
     glm::vec3 world_offset_{};
+    vxr::pose world_from_tracking_{};
+    vxr::pose tracked_head_in_world_{};
+    bool tracked_head_in_world_valid_{};
     glm::vec3 head_position_{};
     glm::quat head_orientation_{1.0F, 0.0F, 0.0F, 0.0F};
     float frame_seconds_{1.0F / 90.0F};

@@ -38,7 +38,7 @@ namespace vxr {
                             session_service.handle(reinterpret_cast<const XrEventDataSessionStateChanged &>(event));
                             break;
                         case XR_TYPE_EVENT_DATA_REFERENCE_SPACE_CHANGE_PENDING:
-                            session_service.handle(reinterpret_cast<const XrEventDataReferenceSpaceChangePending &>(event));
+                            session_service.handle(*reinterpret_cast<const XrEventDataReferenceSpaceChangePending *>(&event));
                             break;
                         case XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING:
                             session_service.terminate();

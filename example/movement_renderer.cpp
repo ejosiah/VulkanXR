@@ -58,19 +58,15 @@ namespace {
 void movement_renderer::init() {
     allocator_ = vkz::vma_memory_allocator::create(vulkan_context());
     command_pool_.init(device(), graphics_queue_family(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue());
-    try {
-        load_textures();
-        create_projection_resources();
-        create_cube();
-        create_cube_pipeline();
-        if (session_context_.cube_supported) {
-            spdlog::info("OpenXR cube composition layers are enabled; using the cube layer for the skybox");
-            cache_cube_layer();
-        }
-    } catch (...) {
-        cleanup();
-        throw;
+    load_textures();
+    create_projection_resources();
+    create_cube();
+    create_cube_pipeline();
+    if (session_context_.cube_supported) {
+        spdlog::info("OpenXR cube composition layers are enabled; using the cube layer for the skybox");
+        cache_cube_layer();
     }
+
 }
 
 void movement_renderer::cleanup() {
@@ -105,6 +101,14 @@ std::vector<vxr::vibration> movement_renderer::set(const vxr::action_set &action
     return {};
 }
 
+void movement_renderer::reference_space_changed(const XrEventDataReferenceSpaceChangePending &event) {
+    if (event.referenceSpaceType != XR_REFERENCE_SPACE_TYPE_STAGE || !tracked_head_in_world_valid_ || session_context_.views.empty()) {
+        return;
+    }
+
+    world_from_tracking_ = vxr::compose(tracked_head_in_world_, vxr::inverse(head_pose(session_context_.views)));
+}
+
 void movement_renderer::update_teleport(const vxr::action_set &actions) {
     constexpr float activation_threshold = 0.7F;
     const auto &right_y = actions.get("right_teleport_y");
@@ -127,7 +131,7 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
         return;
     }
 
-    const auto controller = aim.value<vxr::pose>();
+    const auto controller = world_pose(aim.value<vxr::pose>());
     teleport_.origin = controller.position + world_offset_;
     teleport_.velocity = controller.orientation * glm::vec3{0.0F, 0.0F, -6.5F};
     teleport_.valid = intersect_ground(teleport_.origin, teleport_.velocity, teleport_.target);
@@ -142,16 +146,29 @@ void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
     glm::vec3 right = head_orientation_ * glm::vec3{1.0F, 0.0F, 0.0F};
     forward.y = 0.0F;
     right.y = 0.0F;
-    if (glm::length(forward) > 0.0F) {
+    if (glm::dot(forward, forward) > 0.0F) {
         forward = glm::normalize(forward);
     }
-    if (glm::length(right) > 0.0F) {
+    if (glm::dot(right, right) > 0.0F) {
         right = glm::normalize(right);
     }
     constexpr float movement_speed = 2.0F;
     const glm::vec3 movement = (forward * y + right * x) * movement_speed * frame_seconds_;
     world_offset_ += movement;
     head_position_ += movement;
+}
+
+vxr::pose movement_renderer::world_pose(const vxr::pose &tracking_pose) const noexcept {
+    return vxr::compose(world_from_tracking_, tracking_pose);
+}
+
+vxr::pose movement_renderer::head_pose(const std::vector<XrView> &views) {
+    auto result = vxr::to_pose(views.front().pose);
+    result.position = {};
+    for (const auto &view : views) {
+        result.position += vxr::to_pose(view.pose).position / static_cast<float>(views.size());
+    }
+    return result;
 }
 
 bool movement_renderer::intersect_ground(const glm::vec3 &origin, const glm::vec3 &velocity, glm::vec3 &intersection) {
@@ -182,11 +199,10 @@ void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers
     frame_seconds_ = std::clamp(static_cast<float>(frame.predicted_duration) * 1.0e-9F, 0.0F, 0.1F);
     const auto view_count = std::min(frame.view.views.size(), projection_layer_views_.size());
     if (view_count > 0) {
-        head_position_ = world_offset_;
-        for (std::uint32_t view_index = 0; view_index < view_count; ++view_index) {
-            head_position_ += vxr::to_pose(frame.view.views[view_index].pose).position / static_cast<float>(view_count);
-        }
-        head_orientation_ = vxr::to_pose(frame.view.views[0].pose).orientation;
+        tracked_head_in_world_ = world_pose(head_pose(frame.view.views));
+        tracked_head_in_world_valid_ = true;
+        head_position_ = tracked_head_in_world_.position + world_offset_;
+        head_orientation_ = tracked_head_in_world_.orientation;
     }
     for (std::uint32_t view_index = 0; view_index < view_count; ++view_index) {
         render_projection_view(frame, view_index);
@@ -311,6 +327,7 @@ void movement_renderer::create_projection_resources() {
                 .descriptor_count(1)
                 .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
             .create_layout();
+
     descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4}}};
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
     vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_,
@@ -493,15 +510,14 @@ void movement_renderer::setup_projection_layer() {
 void movement_renderer::render_projection_view(const vxr::frame_info &frame, std::uint32_t view_index) {
     const auto command_buffer = command_pool_.create_command_buffer();
     auto image = get_swapchain("movement_projection").images()[frame.image.image_index].image;
-    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
-    vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    prepare_render(command_buffer, image, view_index);
+
     vkz::render_info render_info;
     render_info.color_attachments.push_back({projection_views_[view_index][frame.image.image_index], projection_format, {0.0F, 0.0F, 0.0F, 0.0F}});
     render_info.render_area = {projection_width, projection_height};
 
     vkz::render(command_buffer, render_info, [&] {
-        auto view = vxr::to_pose(frame.view.views[view_index].pose);
+        auto view = world_pose(vxr::to_pose(frame.view.views[view_index].pose));
         view.position += world_offset_;
         const auto view_projection = vxr::projection(frame.view.views[view_index].fov, 0.05F, 100.0F) * glm::inverse(vxr::to_matrix(view));
         const push_constants constants{glm::inverse(view_projection), glm::vec4{view.position, 1.0F}, view_projection, glm::vec4{teleport_.origin, 1.0F}, glm::vec4{teleport_.velocity, 0.0F},
@@ -525,6 +541,16 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);
     command_pool_.destroy(command_buffer);
+}
+
+movement_renderer::~movement_renderer() {
+    cleanup();
+}
+
+void movement_renderer::prepare_render(VkCommandBuffer command_buffer, VkImage image, uint32_t view_index) {
+    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
+    vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
+                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 
 int main() {

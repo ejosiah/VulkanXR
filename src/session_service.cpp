@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstring>
+#include <sstream>
 #include <thread>
 #include <utility>
 
@@ -68,8 +69,50 @@ namespace vxr::session {
         states_.at(event.state)->enter();
     }
 
+    const char *reference_space_name(XrReferenceSpaceType space) {
+        switch (space) {
+        case XR_REFERENCE_SPACE_TYPE_VIEW:
+            return "XR_REFERENCE_SPACE_TYPE_VIEW";
+        case XR_REFERENCE_SPACE_TYPE_LOCAL:
+            return "XR_REFERENCE_SPACE_TYPE_LOCAL";
+        case XR_REFERENCE_SPACE_TYPE_STAGE:
+            return "XR_REFERENCE_SPACE_TYPE_STAGE";
+        case XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT:
+            return "XR_REFERENCE_SPACE_TYPE_LOCAL_FLOOR_EXT";
+        case XR_REFERENCE_SPACE_TYPE_UNBOUNDED_MSFT:
+            return "XR_REFERENCE_SPACE_TYPE_UNBOUNDED_MSFT";
+        default:
+            return "XR_REFERENCE_SPACE_TYPE_UNKNOWN";
+        }
+    }
+
     void service::handle(const XrEventDataReferenceSpaceChangePending &event) {
+        if (event.session != session_) {
+            spdlog::warn("Ignoring reference-space change for a stale OpenXR session");
+            return;
+        }
+
+        std::stringstream ss;
+        ss << "\nreference space changed: " << reference_space_name(event.referenceSpaceType) << "\n";
+        ss << "\t" << "change time: " << event.changeTime << "\n";
+        if (event.poseValid == XR_TRUE) {
+            const auto o = event.poseInPreviousSpace.orientation;
+            const auto p = event.poseInPreviousSpace.position;
+            ss << "\t" << "pose in previous space" << "\n";
+            ss << "\t\t" << "orientation: [" << o.w << ", " << o.x << ", " << o.y << ", " << o.z << "]\n";
+            ss << "\t\t" << "position: [" << p.x << ", " << p.y << ", " << p.z << "]\n";
+        }
+        spdlog::info(ss.str());
         session_context_.reference_space_change = event;
+    }
+
+    void service::notify_reference_space_change(XrTime predicted_display_time) {
+        const auto &pending = session_context_.reference_space_change;
+        if (pending && predicted_display_time >= pending->changeTime) {
+            renderer_.reference_space_changed(*pending);
+            spdlog::info("Notified renderer of {} reference-space change at display time {}", reference_space_name(pending->referenceSpaceType), predicted_display_time);
+            session_context_.reference_space_change.reset();
+        }
     }
 
     void service::process_frame() {
@@ -218,10 +261,11 @@ namespace vxr::session {
         layers composition_layers;
         if (frame_state.shouldRender == XR_TRUE) {
             begin_frame();
+            auto views = locate_views(service_.session_context_.base_space, frame_state.predictedDisplayTime);
+            service_.session_context_.views = views.views;
+            service_.notify_reference_space_change(frame_state.predictedDisplayTime);
             process_actions(frame_state.predictedDisplayTime);
             update_space_locations(service_.session_context_.base_space, frame_state.predictedDisplayTime);
-            service_.session_context_.views = locate_views(service_.session_context_.base_space, frame_state.predictedDisplayTime).views;
-            view_info views{make_struct<XrViewState>(), service_.session_context_.views};
 
             for (auto &[name, swapchain] : service_.session_context_.swapchains) {
                 if (!swapchain.create_info().render_) continue;

@@ -175,6 +175,8 @@ namespace vxr::session {
 
         void bind_actions(const input::interaction_profile &profile);
 
+        void notify_reference_space_change(XrTime predicted_display_time);
+
         vxr::context &xr_context_;
         context &session_context_;
         const config &configuration_;

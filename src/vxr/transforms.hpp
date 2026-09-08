@@ -48,6 +48,15 @@ namespace vxr {
         return to_matrix(to_pose(value));
     }
 
+    [[nodiscard]] inline pose compose(const pose &parent, const pose &child) noexcept {
+        return {glm::normalize(parent.orientation * child.orientation), parent.position + parent.orientation * child.position};
+    }
+
+    [[nodiscard]] inline pose inverse(const pose &value) noexcept {
+        const auto orientation = glm::inverse(value.orientation);
+        return {orientation, orientation * -value.position};
+    }
+
     [[nodiscard]] inline glm::mat4 projection(const XrFovf &fov, float near_plane, float far_plane) noexcept {
         const float tan_left = std::tan(fov.angleLeft);
         const float tan_right = std::tan(fov.angleRight);
