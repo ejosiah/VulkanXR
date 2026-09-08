@@ -7,6 +7,7 @@
 #include <vulkanizer/barrier.hpp>
 #include <vulkanizer/builders.hpp>
 #include <vulkanizer/ktx.hpp>
+#include <vulkanizer/primitives.hpp>
 #include <vulkanizer/render.hpp>
 #include <vulkanizer/status.hpp>
 
@@ -16,6 +17,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <string_view>
@@ -59,6 +61,8 @@ void movement_renderer::init() {
     try {
         load_textures();
         create_projection_resources();
+        create_cube();
+        create_cube_pipeline();
         if (session_context_.cube_supported) {
             spdlog::info("OpenXR cube composition layers are enabled; using the cube layer for the skybox");
             cache_cube_layer();
@@ -75,6 +79,9 @@ void movement_renderer::cleanup() {
     }
     vkDeviceWaitIdle(device().logical);
     command_pool_.deinit();
+    cube_pipeline_.destroy();
+    cube_index_buffer_.destroy();
+    cube_vertex_buffer_.destroy();
     floor_pipeline_.destroy();
     skybox_pipeline_.destroy();
     descriptor_pool_.destroy();
@@ -407,6 +414,68 @@ void movement_renderer::create_projection_pipeline() {
     floor_pipeline_.descriptor_sets = {descriptor_set_};
 }
 
+void movement_renderer::create_cube() {
+    const auto cube = vkz::prim::cube();
+    cube_vertex_buffer_ =
+        vkz::buffer::builder(allocator_)
+            .usage(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+            .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
+            .size(VKZ_BYTE_SIZE(cube.vertices))
+            .build();
+    auto vertex_mapping = cube_vertex_buffer_.map();
+    std::memcpy(vertex_mapping._, cube.vertices.data(), static_cast<std::size_t>(cube_vertex_buffer_.create_info.size));
+    vertex_mapping.unmap();
+
+    cube_index_buffer_ =
+        vkz::buffer::builder(allocator_)
+            .usage(VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+            .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
+            .size(VKZ_BYTE_SIZE(cube.indices))
+            .build();
+    auto index_mapping = cube_index_buffer_.map();
+    std::memcpy(index_mapping._, cube.indices.data(), static_cast<std::size_t>(cube_index_buffer_.create_info.size));
+    index_mapping.unmap();
+    cube_index_count_ = static_cast<std::uint32_t>(cube.indices.size());
+}
+
+void movement_renderer::create_cube_pipeline() {
+    cube_pipeline_ =
+        vkz::make_graphics_pipeline_builder(device())
+            .shader_stage()
+                .vertex_shader(shader_source("movement_cube.vert"))
+                .fragment_shader(shader_source("movement_cube.frag"))
+            .vertex_input_state()
+                .add_vertex_binding_description(0, sizeof(vkz::prim::vertex), VK_VERTEX_INPUT_RATE_VERTEX)
+                .add_vertex_attribute_description(0, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkz::prim::vertex, position))
+                .add_vertex_attribute_description(1, 0, VK_FORMAT_R32G32B32_SFLOAT, offsetof(vkz::prim::vertex, normal))
+            .input_assembly_state()
+                .triangles()
+            .viewport_state()
+                .viewport()
+                    .origin(0, 0)
+                    .dimension(projection_width, projection_height)
+                    .min_depth(0.0F)
+                    .max_depth(1.0F)
+                .scissor()
+                    .offset(0, 0)
+                    .extent(projection_width, projection_height)
+            .rasterization_state()
+                .polygon_mode_fill()
+                .cull_back_face()
+                .front_face_counter_clockwise()
+            .multisample_state()
+                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+            .color_blend_state()
+                .attachment()
+                    .add()
+            .layout()
+                .add_push_constant_range(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(object_push_constants))
+            .dynamic_render_pass()
+                .add_color_attachment(projection_format)
+            .name("movement_cube")
+            .build();
+}
+
 void movement_renderer::setup_projection_layer() {
     auto &swapchain = get_swapchain("movement_projection");
     projection_layer_ = vxr::make_struct<XrCompositionLayerProjection>();
@@ -445,6 +514,13 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
         vkz::bind_pipeline(command_buffer, floor_pipeline_);
         vkz::push_constants(command_buffer, floor_pipeline_, constants);
         vkz::draw(command_buffer, 3);
+
+        const auto cube_model = glm::translate(glm::mat4{1.0F}, glm::vec3{0.0F, 1.0F, -2.0F}) * glm::scale(glm::mat4{1.0F}, glm::vec3{1.0F, 2.0F, 1.0F});
+        vkz::bind_pipeline(command_buffer, cube_pipeline_);
+        vkz::bind_vertex_buffer(command_buffer, cube_vertex_buffer_);
+        vkz::bind_index_buffer<std::uint32_t>(command_buffer, cube_index_buffer_);
+        vkz::push_constants(command_buffer, cube_pipeline_, object_push_constants{cube_model, view_projection});
+        vkz::draw_indexed(command_buffer, cube_index_count_);
     });
     VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
     command_pool_.submit_and_wait(command_buffer);

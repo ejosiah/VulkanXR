@@ -53,6 +53,11 @@ class movement_renderer final : public vxr::renderer {
         glm::vec3 target{};
     };
 
+    struct object_push_constants {
+        glm::mat4 model{1.0F};
+        glm::mat4 view_projection{1.0F};
+    };
+
     void load_textures();
 
     void cache_cube_layer();
@@ -62,6 +67,10 @@ class movement_renderer final : public vxr::renderer {
     void create_projection_views();
 
     void create_projection_pipeline();
+
+    void create_cube();
+
+    void create_cube_pipeline();
 
     void setup_projection_layer();
 
@@ -84,6 +93,10 @@ class movement_renderer final : public vxr::renderer {
     vkz::descriptor_set descriptor_set_{};
     vkz::pipeline skybox_pipeline_{};
     vkz::pipeline floor_pipeline_{};
+    vkz::pipeline cube_pipeline_{};
+    vkz::buffer cube_vertex_buffer_{};
+    vkz::buffer cube_index_buffer_{};
+    std::uint32_t cube_index_count_{};
     std::array<std::vector<vkz::image_view>, 2> projection_views_;
     std::array<XrCompositionLayerProjectionView, 2> projection_layer_views_{};
     XrCompositionLayerProjection projection_layer_{};
