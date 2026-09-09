@@ -49,7 +49,13 @@ namespace vxr {
 
         void cleanup() noexcept;
 
+        void recreate_swapchain();
+
         void create_pipelines();
+
+        void destroy_pipelines() noexcept;
+
+        [[nodiscard]] bool framebuffer_resized() const;
 
         [[nodiscard]] vkz::pipeline create_pipeline(const std::string &vertex_shader, const std::string &fragment_shader, const std::string &name);
 
