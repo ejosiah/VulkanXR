@@ -61,7 +61,7 @@ void movement_renderer::init() {
     create_projection_resources();
     create_cube();
     create_cube_pipeline();
-    if (session_context_.cube_supported) {
+    if (context_.cube_supported) {
         spdlog::info("OpenXR cube composition layers are enabled; using the cube layer for the skybox");
         auto &swapchain = get_swapchain("movement_cube");
         create_cubemap_pipeline();
@@ -108,11 +108,11 @@ std::vector<vxr::vibration> movement_renderer::set(const vxr::action_set &action
 }
 
 void movement_renderer::reference_space_changed(const XrEventDataReferenceSpaceChangePending &event) {
-    if (event.referenceSpaceType != XR_REFERENCE_SPACE_TYPE_STAGE || !tracked_head_in_world_valid_ || session_context_.views.empty()) {
+    if (event.referenceSpaceType != XR_REFERENCE_SPACE_TYPE_STAGE || !tracked_head_in_world_valid_ || context_.views.empty()) {
         return;
     }
 
-    world_from_tracking_ = vxr::compose(tracked_head_in_world_, vxr::inverse(head_pose(session_context_.views)));
+    world_from_tracking_ = vxr::compose(tracked_head_in_world_, vxr::inverse(head_pose(context_.views)));
 }
 
 void movement_renderer::update_teleport(const vxr::action_set &actions) {
@@ -198,7 +198,7 @@ void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
 
 bool movement_renderer::vive_controller_active() const {
     constexpr std::string_view vive_profile = "/interaction_profiles/htc/vive_controller";
-    return std::ranges::any_of(session_context_.interaction_profiles, [](const auto &entry) {
+    return std::ranges::any_of(context_.interaction_profiles, [](const auto &entry) {
         return entry.second == vive_profile;
     });
 }
@@ -241,7 +241,7 @@ void movement_renderer::paused(const vxr::frame_info &frame, vxr::layers &layers
 }
 
 void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers) {
-    if (session_context_.cube_supported && frame.image.swapchain == get_swapchain("movement_cube").handle()) {
+    if (context_.cube_supported && frame.image.swapchain == get_swapchain("movement_cube").handle()) {
         const auto orientation = vxr::inverse(world_from_tracking_.orientation);
         cube_layer_.orientation = {orientation.x, orientation.y, orientation.z, orientation.w};
         layers.push_back({&cube_layer_, 0});
@@ -265,15 +265,15 @@ void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers
         projection_layer_views_[view_index].fov = frame.view.views[view_index].fov;
     }
     projection_layer_.viewCount = static_cast<std::uint32_t>(view_count);
-    layers.push_back({&projection_layer_, session_context_.cube_supported ? 1U : 0U});
+    layers.push_back({&projection_layer_, context_.cube_supported ? 1U : 0U});
 }
 
 const char *movement_renderer::name() const noexcept {
     return "Movement";
 }
 
-std::unique_ptr<vxr::renderer> movement_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
-    return std::make_unique<movement_renderer>(rendering_context, session_context);
+std::unique_ptr<vxr::renderer> movement_renderer::create(vxr::rendering::context &context) {
+    return std::make_unique<movement_renderer>(context);
 }
 
 vxr::session::config movement_renderer::session_config() {
@@ -594,7 +594,7 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
         const auto view_projection = vxr::projection(frame.view.views[view_index].fov, 0.05F, 100.0F) * vxr::inverse(vxr::to_matrix(view));
         const push_constants constants{vxr::inverse(view_projection), vxr::vec4{view.position, 1.0F}, view_projection, vxr::vec4{teleport_.origin, 1.0F}, vxr::vec4{teleport_.velocity, 0.0F},
                                        vxr::vec4{teleport_.target, 1.0F}, teleport_.active && teleport_.valid ? 1U : 0U};
-        if (!session_context_.cube_supported) {
+        if (!context_.cube_supported) {
             vkz::bind_pipeline(command_buffer, skybox_pipeline_);
             vkz::push_constants(command_buffer, skybox_pipeline_, constants);
             vkz::draw(command_buffer, 3);

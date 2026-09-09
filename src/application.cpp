@@ -12,8 +12,8 @@
 
 namespace vxr {
 
-    application::application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory, mirror_config mirror_config)
-        : context_builder_{context_builder}, session_config_{session_config}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
+    application::application(context::builder &context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config)
+        : context_builder_{context_builder}, session_config_{std::move(session_config)}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
         if (!mirror_config_.enabled) {
             return;
         }
@@ -48,18 +48,18 @@ namespace vxr {
                 auto xr_context = context_builder_.build();
                 backoff_.reset();
 
-                session::context session_context;
-                auto renderer = renderer_factory_(xr_context, session_context);
+                rendering::context rendering_context{xr_context.vulkan_context(), xr_context.graphics_queue_family(), xr_context.graphics_queue()};
+                auto renderer = renderer_factory_(rendering_context);
                 if (!renderer) {
                     throw fatal_error{"The renderer factory returned a null renderer"};
                 }
 
                 std::unique_ptr<mirror> desktop_mirror;
                 if (mirror_config_.enabled) {
-                    desktop_mirror = std::make_unique<mirror>(window_.get(), xr_context, session_context, mirror_config_);
+                    desktop_mirror = std::make_unique<mirror>(window_.get(), rendering_context, mirror_config_);
                 }
 
-                session::service session_service{xr_context, session_context, session_config_, *renderer, desktop_mirror.get()};
+                session::service session_service{xr_context, rendering_context, session_config_, *renderer, desktop_mirror.get()};
                 session_service.init();
 
                 auto event = make_struct<XrEventDataBuffer>();

@@ -134,8 +134,8 @@ vxr::session::config checkerboard_renderer::session_config() {
     return config;
 }
 
-std::unique_ptr<vxr::renderer> checkerboard_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
-    return std::make_unique<checkerboard_renderer>(rendering_context, session_context);
+std::unique_ptr<vxr::renderer> checkerboard_renderer::create(vxr::rendering::context &context) {
+    return std::make_unique<checkerboard_renderer>(context);
 }
 
 int main(int argc, char **argv) {

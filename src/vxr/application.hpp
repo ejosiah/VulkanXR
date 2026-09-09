@@ -12,11 +12,11 @@
 
 namespace vxr {
 
-    using renderer_factory = std::function<std::unique_ptr<renderer>(rendering_context &, session::context &)>;
+    using renderer_factory = std::function<std::unique_ptr<renderer>(rendering::context &)>;
 
     class application final : public app {
       public:
-        application(context::builder &context_builder, const session::config &session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
+        application(context::builder &context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
 
         void run() override;
 
@@ -26,12 +26,12 @@ namespace vxr {
 
       private:
         context::builder &context_builder_;
-        const session::config &session_config_;
+        session::config session_config_;
         renderer_factory renderer_factory_;
         mirror_config mirror_config_;
         vkz::glfw_runtime windowing_;
-        std::unique_ptr<GLFWwindow, vkz::glfw_window_deleter> window_;
-        std::unique_ptr<vkz::glfw_surface_provider> surface_provider_;
+        window_ptr window_;
+        surface_provider_ptr surface_provider_;
         backoff backoff_{"Failed to create OpenXR context"};
         bool shutdown_requested_{};
     };

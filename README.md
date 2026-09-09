@@ -33,7 +33,7 @@ Conan presets are included by `CMakeUserPresets.json`, matching Vista's layout.
 
 `vxr::desktop_application` runs a renderer without creating an OpenXR instance. It creates a regular Vulkan context, desktop-owned images exposed through synthetic `vxr::swapchain` handles, and sends the renderer's composition layers to the desktop mirror.
 
-Use `vxr::application_builder` to select the runtime without constructing either application directly. It extends `vxr::context::builder` and adds `.session(...)`, `.renderer(...)`, and `.mode(...)` configuration. The mode can be `vxr::application_mode::vr` or `vxr::application_mode::desktop`, and the window title is taken from `.app_name(...)`.
+Use `vxr::application_builder` to select the runtime without constructing either application directly. It contains and forwards context configuration to `vxr::context::builder`, and adds `.session(...)`, `.renderer(...)`, and `.mode(...)` configuration. The mode can be `vxr::application_mode::vr` or `vxr::application_mode::desktop`, and the window title is taken from `.app_name(...)`.
 
 The movement example can be launched in desktop mode with:
 

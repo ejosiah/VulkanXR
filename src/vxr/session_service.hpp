@@ -3,7 +3,7 @@
 #include <vxr/context.hpp>
 #include <vxr/renderer.hpp>
 #include <vxr/session_config.hpp>
-#include <vxr/session_context.hpp>
+#include <vxr/rendering_context.hpp>
 
 #include <openxr/openxr.h>
 
@@ -127,7 +127,7 @@ namespace vxr::session {
 
     class service {
       public:
-        service(vxr::context &xr_context, context &session_context, const config &configuration, renderer &renderer, vxr::mirror *mirror = nullptr)
+        service(vxr::context &xr_context, rendering::context &session_context, const config &configuration, renderer &renderer, vxr::mirror *mirror = nullptr)
             : xr_context_{xr_context}, session_context_{session_context}, configuration_{configuration}, renderer_{renderer}, mirror_{mirror}, unknown_state_{*this}, idle_state_{*this}, ready_state_{*this},
               synchronized_state_{*this}, visible_state_{*this}, focused_state_{*this}, stopping_state_{*this}, exiting_state_{*this}, loss_pending_state_{*this} {
             states_ = {{XR_SESSION_STATE_UNKNOWN, &unknown_state_},           {XR_SESSION_STATE_IDLE, &idle_state_},       {XR_SESSION_STATE_READY, &ready_state_},
@@ -184,7 +184,7 @@ namespace vxr::session {
         void notify_reference_space_change(XrTime predicted_display_time);
 
         vxr::context &xr_context_;
-        context &session_context_;
+        rendering::context &session_context_;
         const config &configuration_;
         renderer &renderer_;
         vxr::mirror *mirror_{};

@@ -34,7 +34,7 @@ class movement_renderer final : public vxr::renderer {
 
     [[nodiscard]] const char *name() const noexcept override;
 
-    [[nodiscard]] static std::unique_ptr<vxr::renderer> create(vxr::rendering_context &rendering_context, vxr::session::context &session_context);
+    [[nodiscard]] static std::unique_ptr<vxr::renderer> create(vxr::rendering::context &context);
 
     [[nodiscard]] static vxr::session::config session_config();
 
