@@ -64,15 +64,11 @@ class movement_renderer final : public vxr::renderer {
 
     void load_textures();
 
-    void cache_cube_layer();
-
     void create_projection_resources();
 
     void create_projection_views();
 
     void create_projection_pipeline();
-
-    void create_cubemap_pipeline();
 
     void create_cube();
 
@@ -108,7 +104,6 @@ class movement_renderer final : public vxr::renderer {
     vkz::descriptor_set_layout descriptor_layout_{};
     vkz::descriptor_set descriptor_set_{};
     vkz::pipeline skybox_pipeline_{};
-    vkz::pipeline cubemap_pipeline_{};
     vkz::pipeline floor_pipeline_{};
     vkz::pipeline cube_pipeline_{};
     vkz::buffer cube_vertex_buffer_{};
@@ -117,7 +112,6 @@ class movement_renderer final : public vxr::renderer {
     std::array<std::vector<vkz::image_view>, 2> projection_views_;
     std::array<XrCompositionLayerProjectionView, 2> projection_layer_views_{};
     XrCompositionLayerProjection projection_layer_{};
-    XrCompositionLayerCubeKHR cube_layer_{};
     teleport_state teleport_{};
     vxr::vec3 world_offset_{};
     vxr::pose world_from_tracking_{};

@@ -101,8 +101,8 @@ namespace vxr {
         context_ = std::make_unique<rendering::context>(rendering::context{vulkan_context_, queue_family, graphics_queue});
         context_->state = XR_SESSION_STATE_FOCUSED;
         context_->views = desktop_views();
-        context_->cube_supported = true;
-        context_->equirect_supported = true;
+        context_->cube_supported = false;
+        context_->equirect_supported = false;
         context_->depth_supported = true;
         context_->interaction_profiles[input::location::left_hand] = "/interaction_profiles/oculus/touch_controller";
         context_->interaction_profiles[input::location::right_hand] = "/interaction_profiles/oculus/touch_controller";

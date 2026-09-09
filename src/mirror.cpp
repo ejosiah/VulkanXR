@@ -150,7 +150,7 @@ namespace vxr {
                 .rasterization_samples(VK_SAMPLE_COUNT_1_BIT);
 
         auto &attachment = builder.color_blend_state().attachment();
-        if (context_.blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND) {
+        if (context_.blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND || context_.blend_mode == XR_ENVIRONMENT_BLEND_MODE_OPAQUE) {
             attachment
                 .enable_blend()
                 .src_color_blend_factor()
