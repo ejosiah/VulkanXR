@@ -3,7 +3,6 @@
 #include <vxr/action.hpp>
 #include <vxr/rendering_context.hpp>
 #include <vxr/models.hpp>
-#include <vxr/session_context.hpp>
 #include <vxr/transforms.hpp>
 
 #include <algorithm>
@@ -16,9 +15,9 @@ namespace vxr {
 
     class renderer {
       public:
-        renderer(rendering_context &rendering_context, session::context &session_context)
-        : rendering_context_{rendering_context}
-        , session_context_{session_context} {}
+        explicit renderer(rendering::context &context)
+        : context_{context} {
+        }
 
         virtual ~renderer() = default;
 
@@ -58,37 +57,36 @@ namespace vxr {
 
       protected:
         [[nodiscard]] vkz::device &device() const noexcept {
-            return rendering_context_.device();
+            return context_.device();
         }
 
         [[nodiscard]] vkz::context &vulkan_context() const noexcept {
-            return rendering_context_.vulkan_context();
+            return context_.vulkan;
         }
 
         [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
-            return rendering_context_.graphics_queue_family();
+            return context_.graphics_queue_family;
         }
 
         [[nodiscard]] VkQueue graphics_queue() const noexcept {
-            return rendering_context_.graphics_queue();
+            return context_.graphics_queue;
         }
 
         [[nodiscard]] swapchain &get_swapchain(const std::string &name) {
-            return session_context_.swapchains.at(name);
+            return context_.swapchains.at(name);
         }
 
         [[nodiscard]] swapchain &get_swapchain(XrSwapchain handle) {
-            const auto found = std::ranges::find_if(session_context_.swapchains, [handle](const auto &entry) {
+            const auto found = std::ranges::find_if(context_.swapchains, [handle](const auto &entry) {
                 return entry.second.handle() == handle;
             });
-            if (found == session_context_.swapchains.end()) {
+            if (found == context_.swapchains.end()) {
                 throw std::out_of_range{"OpenXR swapchain handle was not found in the session context"};
             }
             return found->second;
         }
 
-        rendering_context &rendering_context_;
-        session::context &session_context_;
+        rendering::context &context_;
     };
 
 } // namespace vxr

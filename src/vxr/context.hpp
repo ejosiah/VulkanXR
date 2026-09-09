@@ -1,6 +1,5 @@
 #pragma once
 
-#include <vxr/rendering_context.hpp>
 
 #include <openxr/openxr.h>
 #include <vulkanizer/context.hpp>
@@ -13,7 +12,7 @@
 
 namespace vxr {
 
-    class context : public rendering_context {
+    class context {
       public:
         class builder;
 
@@ -47,11 +46,19 @@ namespace vxr {
             return vulkan_.device.physical;
         }
 
-        [[nodiscard]] vkz::context &vulkan_context() noexcept override {
+        [[nodiscard]] vkz::device &device() noexcept {
+            return vulkan_.device;
+        }
+
+        [[nodiscard]] const vkz::device &device() const noexcept {
+            return vulkan_.device;
+        }
+
+        [[nodiscard]] vkz::context &vulkan_context() noexcept {
             return vulkan_;
         }
 
-        [[nodiscard]] const vkz::context &vulkan_context() const noexcept override {
+        [[nodiscard]] const vkz::context &vulkan_context() const noexcept {
             return vulkan_;
         }
 
@@ -67,11 +74,11 @@ namespace vxr {
             return vulkan_.api_version;
         }
 
-        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept override {
+        [[nodiscard]] std::uint32_t graphics_queue_family() const noexcept {
             return graphics_queue_family_;
         }
 
-        [[nodiscard]] VkQueue graphics_queue() const noexcept override {
+        [[nodiscard]] VkQueue graphics_queue() const noexcept {
             return graphics_queue_;
         }
 

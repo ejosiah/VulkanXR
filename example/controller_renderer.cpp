@@ -178,8 +178,8 @@ const char *controller_renderer::name() const noexcept {
     return "Controller Input";
 }
 
-std::unique_ptr<vxr::renderer> controller_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
-    return std::make_unique<controller_renderer>(rendering_context, session_context);
+std::unique_ptr<vxr::renderer> controller_renderer::create(vxr::rendering::context &context) {
+    return std::make_unique<controller_renderer>(context);
 }
 
 vxr::session::config controller_renderer::session_config() {
@@ -226,8 +226,8 @@ vxr::session::config controller_renderer::session_config() {
 
 void controller_renderer::update_text() {
     const auto profile = [&](vxr::input::location location) {
-        const auto found = session_context_.interaction_profiles.find(location);
-        return found == session_context_.interaction_profiles.end() ? std::string{"Waiting for controller"} : found->second;
+        const auto found = context_.interaction_profiles.find(location);
+        return found == context_.interaction_profiles.end() ? std::string{"Waiting for controller"} : found->second;
     };
     std::string history = action_history_.empty() ? "Press a controller button\n" : "";
     for (const auto &action : action_history_) {

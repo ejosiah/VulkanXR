@@ -1,32 +1,41 @@
 #pragma once
 
+#include <vxr/action.hpp>
+#include <vxr/input.hpp>
+#include <vxr/models.hpp>
+#include <vxr/swapchain.hpp>
+
 #include <vulkanizer/context.hpp>
 
-namespace vxr {
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
 
-    class rendering_context {
-      public:
-        virtual ~rendering_context() = default;
+namespace vxr::rendering {
 
-        [[nodiscard]] virtual vkz::context &vulkan_context() noexcept = 0;
+    struct context {
+        vkz::context &vulkan;
+        std::uint32_t graphics_queue_family{};
+        VkQueue graphics_queue{VK_NULL_HANDLE};
+        std::map<std::string, swapchain> swapchains;
+        XrSessionState state{XR_SESSION_STATE_UNKNOWN};
+        std::vector<XrView> views;
+        XrSpace base_space{XR_NULL_HANDLE};
+        std::map<std::string, XrSpace> spaces;
+        std::map<std::string, action_set> action_sets;
+        std::vector<XrActiveActionSet> active_action_sets;
+        std::map<std::string, XrSpace> action_spaces;
+        std::map<input::location, std::string> interaction_profiles;
+        XrEnvironmentBlendMode blend_mode{XR_ENVIRONMENT_BLEND_MODE_OPAQUE};
+        std::optional<XrEventDataReferenceSpaceChangePending> reference_space_change;
+        bool cube_supported{};
+        bool equirect_supported{};
+        bool depth_supported{};
 
-        [[nodiscard]] virtual const vkz::context &vulkan_context() const noexcept = 0;
-
-        [[nodiscard]] virtual std::uint32_t graphics_queue_family() const noexcept = 0;
-
-        [[nodiscard]] virtual VkQueue graphics_queue() const noexcept = 0;
-
-        [[nodiscard]] vkz::device &device() noexcept {
-            return vulkan_context().device;
-        }
-
-        [[nodiscard]] const vkz::device &device() const noexcept {
-            return vulkan_context().device;
-        }
-
-        [[nodiscard]] VkInstance vulkan_instance() const noexcept {
-            return vulkan_context().instance;
+        [[nodiscard]] vkz::device &device() const noexcept {
+            return vulkan.device;
         }
     };
 
-} // namespace vxr
+} // namespace vxr::rendering

@@ -183,8 +183,8 @@ const char *space_visualization_renderer::name() const noexcept {
     return "Space Visualization";
 }
 
-std::unique_ptr<vxr::renderer> space_visualization_renderer::create(vxr::rendering_context &rendering_context, vxr::session::context &session_context) {
-    return std::make_unique<space_visualization_renderer>(rendering_context, session_context);
+std::unique_ptr<vxr::renderer> space_visualization_renderer::create(vxr::rendering::context &context) {
+    return std::make_unique<space_visualization_renderer>(context);
 }
 
 vxr::session::config space_visualization_renderer::session_config() {
@@ -312,7 +312,7 @@ void space_visualization_renderer::create_image_views() {
         }
     }
 
-    if (session_context_.depth_supported) {
+    if (context_.depth_supported) {
         auto &depth_swapchain = get_swapchain("main_depth");
         for (std::uint32_t view_index = 0; view_index < 2; ++view_index) {
             for (const auto &swapchain_image : depth_swapchain.images()) {
@@ -406,7 +406,7 @@ void space_visualization_renderer::setup_projection_layer() {
         view.subImage.swapchain = color_swapchain.handle();
         view.subImage.imageRect.extent = {static_cast<std::int32_t>(color_swapchain.width()), static_cast<std::int32_t>(color_swapchain.height())};
         view.subImage.imageArrayIndex = view_index;
-        if (session_context_.depth_supported) {
+        if (context_.depth_supported) {
             auto &depth = depth_infos_[view_index];
             depth = vxr::make_struct<XrCompositionLayerDepthInfoKHR>();
             depth.subImage.swapchain = get_swapchain("main_depth").handle();
@@ -425,9 +425,9 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
     const auto depth_image = frame.depth_image ? frame.depth_image->image_index : 0;
     const auto command_buffer = command_pool_.create_command_buffer();
     auto color_image = get_swapchain("main").images()[frame.image.image_index].image;
-    auto depth_image_handle = session_context_.depth_supported ? get_swapchain("main_depth").images()[depth_image].image : owned_depth_images_[view_index].handle;
+    auto depth_image_handle = context_.depth_supported ? get_swapchain("main_depth").images()[depth_image].image : owned_depth_images_[view_index].handle;
     const VkImageSubresourceRange color_range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
-    const VkImageSubresourceRange depth_range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, session_context_.depth_supported ? view_index : 0, 1};
+    const VkImageSubresourceRange depth_range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, context_.depth_supported ? view_index : 0, 1};
     vkz::barrier::push_and_flush(command_buffer, color_image, color_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
                                  VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     vkz::barrier::push_and_flush(command_buffer, depth_image_handle, depth_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,

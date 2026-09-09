@@ -34,45 +34,11 @@ cmrc_add_resource_library(vulkanxr_shaders
     ${VULKANXR_SHADER_FILES}
 )
 
-add_library(vulkanxr STATIC
-    src/vxr/application.hpp
-    src/vxr/application_builder.hpp
-    src/vxr/app.hpp
-    src/vxr/desktop_application.hpp
-    src/vxr/desktop_context.hpp
-    src/vxr/desktop_input.hpp
-    src/vxr/backoff.hpp
-    src/vxr/action.hpp
-    src/vxr/vxr.hpp
-    src/vxr/openxr_helpers.hpp
-    src/vxr/status.hpp
-    src/vxr/renderer.hpp
-    src/vxr/rendering_context.hpp
-    src/vxr/input.hpp
-    src/vxr/session_context.hpp
-    src/vxr/session_config.hpp
-    src/vxr/session_service.hpp
-    src/vxr/swapchain.hpp
-    src/vxr/extension_dispatch.hpp
-    src/vxr/font_pipeline.hpp
-    src/vxr/mirror.hpp
-    src/vxr/context.hpp
-    src/vxr/models.hpp
-    src/vxr/transforms.hpp
-    src/application.cpp
-    src/application_builder.cpp
-    src/desktop_application.cpp
-    src/desktop_input.cpp
-    src/backoff.cpp
-    src/vulkanxr.cpp
-    src/extension_dispatch.cpp
-    src/font_pipeline.cpp
-    src/context.cpp
-    src/input.cpp
-    src/mirror.cpp
-    src/session_service.cpp
-    src/swapchain.cpp
+file(GLOB_RECURSE VULKANXR_SOURCE_FILES CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/vxr/*.hpp"
 )
+add_library(vulkanxr STATIC ${VULKANXR_SOURCE_FILES})
 add_library(VulkanXR::VulkanXR ALIAS vulkanxr)
 
 target_compile_features(vulkanxr PUBLIC cxx_std_20)
