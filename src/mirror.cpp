@@ -41,8 +41,10 @@ namespace vxr {
 
     } // namespace
 
-    mirror::mirror(GLFWwindow *window, rendering::context &context, mirror_config config) : context_{context}, config_{std::move(config)}, app_{window, context.vulkan, config_.vsync} {
-    }
+    mirror::mirror(GLFWwindow *window, rendering::context &context, mirror_config config)
+    : context_{context}
+    , config_{std::move(config)}
+    , app_{window, context.vulkan, config_.vsync} {}
 
     mirror::~mirror() {
         cleanup();
@@ -74,10 +76,7 @@ namespace vxr {
         if (context_.device()) {
             vkDeviceWaitIdle(context_.device().logical);
         }
-        projection_pipeline_.destroy();
-        cube_pipeline_.destroy();
-        quad_pipeline_.destroy();
-        equirect_pipeline_.destroy();
+        destroy_pipelines();
         sampler_.destroy();
         descriptor_pool_.destroy();
         descriptor_layout_.destroy();
@@ -88,11 +87,42 @@ namespace vxr {
         initialized_ = false;
     }
 
+    void mirror::recreate_swapchain() {
+        spdlog::info("Desktop mirror resized; recreating the swapchain");
+        vkDeviceWaitIdle(context_.device().logical);
+        app_.wait_for_drawable_window();
+        if (should_close()) {
+            return;
+        }
+
+        destroy_pipelines();
+        vkz::destroy_image_views(context_.device().logical, swapchain_views_);
+        swapchain_views_.clear();
+        swapchain_.reset();
+        swapchain_ = app_.create_swapchain();
+        swapchain_views_ = vkz::create_swapchain_image_views(context_.device(), *swapchain_);
+        create_pipelines();
+    }
+
     void mirror::create_pipelines() {
         projection_pipeline_ = create_pipeline("mirror.vert", "mirror_projection.frag", "mirror_projection");
         cube_pipeline_ = create_pipeline("mirror.vert", "mirror_cube.frag", "mirror_cube");
         quad_pipeline_ = create_pipeline("mirror_quad.vert", "mirror_quad.frag", "mirror_quad");
         equirect_pipeline_ = create_pipeline("mirror.vert", "mirror_equirect.frag", "mirror_equirect");
+    }
+
+    void mirror::destroy_pipelines() noexcept {
+        projection_pipeline_.destroy();
+        cube_pipeline_.destroy();
+        quad_pipeline_.destroy();
+        equirect_pipeline_.destroy();
+    }
+
+    bool mirror::framebuffer_resized() const {
+        int width{};
+        int height{};
+        glfwGetFramebufferSize(app_.window(), &width, &height);
+        return static_cast<std::uint32_t>(width) != swapchain_->width() || static_cast<std::uint32_t>(height) != swapchain_->height();
     }
 
     vkz::pipeline mirror::create_pipeline(const std::string &vertex_shader, const std::string &fragment_shader, const std::string &name) {
@@ -175,6 +205,14 @@ namespace vxr {
         }
 
         app_.wait_for_drawable_window();
+        if (should_close()) {
+            return;
+        }
+        if (framebuffer_resized()) {
+            recreate_swapchain();
+            return;
+        }
+
         std::uint32_t swapchain_image_index{};
         VkFence acquire_fence{};
         const VkFenceCreateInfo fence_info{VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
@@ -182,6 +220,7 @@ namespace vxr {
         const VkResult acquire_result = vkAcquireNextImageKHR(context_.device().logical, swapchain_->handle(), UINT64_MAX, VK_NULL_HANDLE, acquire_fence, &swapchain_image_index);
         if (acquire_result == VK_ERROR_OUT_OF_DATE_KHR) {
             vkDestroyFence(context_.device().logical, acquire_fence, nullptr);
+            recreate_swapchain();
             return;
         }
         VKZ_CHECK_VULKAN(acquire_result);
@@ -216,7 +255,8 @@ namespace vxr {
         present_info.pSwapchains = &handle;
         present_info.pImageIndices = &swapchain_image_index;
         const VkResult present_result = vkQueuePresentKHR(app_.graphics_queue(), &present_info);
-        if (present_result != VK_ERROR_OUT_OF_DATE_KHR && present_result != VK_SUBOPTIMAL_KHR) {
+        const bool recreate = present_result == VK_ERROR_OUT_OF_DATE_KHR || present_result == VK_SUBOPTIMAL_KHR;
+        if (!recreate) {
             VKZ_CHECK_VULKAN(present_result);
         }
 
@@ -224,6 +264,9 @@ namespace vxr {
             view.destroy();
         }
         descriptor_pool_.reset();
+        if (recreate) {
+            recreate_swapchain();
+        }
     }
 
     void mirror::draw_layer(VkCommandBuffer command_buffer, const layer &composition_layer, const std::map<XrSwapchain, std::uint32_t> &image_indices,
@@ -255,7 +298,7 @@ namespace vxr {
         const auto handle = layer.views[0].subImage.swapchain;
         push_constants constants;
         constants.parameters = {config_.eye_separation, config_.barrel_distortion, static_cast<float>(layer.viewCount), config_.multiview ? 1.0F : 0.0F};
-        draw_texture(command_buffer, projection_pipeline_, handle, image_index(handle, image_indices), VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, layer.viewCount, constants, temporary_views);
+        draw_texture(command_buffer, projection_pipeline_, handle, image_index(handle, image_indices), VK_IMAGE_VIEW_TYPE_2D_ARRAY, 0, config_.multiview ? layer.viewCount : 1, constants, temporary_views);
     }
 
     void mirror::draw_cube(VkCommandBuffer command_buffer, const XrCompositionLayerCubeKHR &layer, const std::map<XrSwapchain, std::uint32_t> &image_indices,
