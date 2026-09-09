@@ -23,7 +23,7 @@ class VulkanXRConan(ConanFile):
     def requirements(self):
         # Versions match the Vista project.
         self.requires(
-            "vulkanizer/0.0.33",
+            "vulkanizer/0.0.34",
             options={"with_nsight_aftermath": self.options.with_nsight_aftermath},
         )
         self.requires("glm/1.0.1")
