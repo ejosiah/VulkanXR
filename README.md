@@ -43,6 +43,91 @@ cmake-build-debug\Debug\vulkanxr_movement_example.exe --desktop
 
 The desktop input adapter maps the left controller axes to `W`, `S`, `A`, and `D`, and the right controller axes to the arrow keys. `J`, `K`, `U`, and `I` represent the `A`, `B`, `X`, and `Y` buttons; Enter is Select, Escape is Menu, Shift is Squeeze, and Control is the thumbstick or trackpad click. Left and right triggers use `F` and `/` respectively.
 
+## Sponza lighting demo
+
+The Sponza demo uses vulkanizer 0.0.49: a raster G-buffer, DDGI diffuse GI,
+ray-traced shadows and reflections with the built-in temporal/spatial denoisers,
+and the same Uncharted 2 tone mapping as rtx_test. Each eye owns independent
+screen-space textures and histories. Scene color/depth rasterization and probe
+visualization use 4x MSAA, resolving HDR color before tone mapping. The lighting
+G-buffer and screen-space effects remain single-sampled. The point light is at `{0, 1, -2}` with
+5000 K color, intensity 10, range 5, and the reference color/intensity scaling.
+The projection remains 2064x2096 per eye; GI, shadows and reflections default
+to half resolution. It uses Vulkan 1.2 with dynamic rendering and synchronization2 extensions, ray tracing, and ray queries.
+
+```powershell
+cmake-build-debug\Debug\vulkanxr_sponza_example.exe --desktop
+```
+
+Omit `--desktop` to use OpenXR. `--full-resolution-gi`,
+`--full-resolution-shadows`, and `--full-resolution-reflections` independently
+select native resolution; `--full-resolution` selects all three.
+`--no-gi`, `--no-shadows`, `--no-reflections`, `--no-probe-offsetting`,
+`--visualize-probes`, `--indirect-only`, `--reflection-only`, and
+`--gi-multiplier <value>` control lighting at startup.
+The old full-primary-ray reference renderer is no longer used by this demo.
+
+`--nrc` selects Neural Radiance Cache GI; `--ddgi` selects the default DDGI.
+NRC starts bounce rays from each eye's raster G-buffer and uses a separate cache
+context for each eye. `--nrd` enables RELAX for diffuse GI and reflections and
+SIGMA for shadows; the built-in shadow/reflection denoisers are bypassed.
+`--no-nrd` restores the built-in denoisers. NRD histories and output resolutions
+remain independent per eye and per effect.
+
+```powershell
+cmake-build-debug\Debug\vulkanxr_sponza_example.exe --desktop --nrc --nrd
+```
+
+The example's SDK paths default to the sibling light_transport installations.
+Override `VULKANXR_NRC_SDK_ROOT`, `VULKANXR_NRD_SDK_ROOT`,
+`VULKANXR_NRD_LIBRARY`, and `VULKANXR_NRD_BLOB_LIBRARY` in CMake as needed.
+NRD must contain embedded SPIR-V with normal encoding 2 and roughness encoding 1.
+The NRC runtime DLLs are copied beside the executable. DXC compiles the NRC
+bridge shaders. All shader descriptors remain ordinary private descriptor sets.
+The NRC 0.15 SDK reports live SDK/CUDA objects during Vulkan device teardown,
+also seen in the reference; these cleanup reports are tracked separately from
+rendering synchronization and descriptor validation.
+
+
+For bounded validation, run `--desktop --validation --verify-lighting --frames 60`.
+This checks both eyes' GPU radiance and visibility readbacks before shutting down.
+
+## Living room lighting demo
+
+`vulkanxr_living_room_example` uses the same stereo raster, DDGI/NRC, shadows,
+reflections and optional NRD setup. It uses the first two authored point lights
+from `resources/living_room/LivingRoom.vkmesh`, retaining their positions,
+colors, intensities and ranges. Its DDGI grid matches rtx_test: 7x4x7 probes
+covering the scene bounds, offsetting enabled, classification disabled and
+self-shadow bias 0.05. The camera starts inside the room facing its center.
+
+```powershell
+cmake-build-debug\Debug\vulkanxr_living_room_example.exe --desktop
+cmake-build-debug\Debug\vulkanxr_living_room_example.exe --desktop --nrc --nrd
+```
+
+Omit `--desktop` for OpenXR. All Sponza lighting options also apply here.
+`--living-room` selects this scene in the Sponza executable, and `--sponza`
+selects Sponza in the living room executable. The living room mesh, material
+and bounds files are copied from vulkanizer's `test/mesh/resources/living_room`.
+
+The living room ceiling lamp retains its authored alpha blend mode, base-color alpha and texture alpha in both VulkanXR and rtx_test. The ceiling point light uses its original source size; the lamp has no emission override. Lighting paths respect alpha coverage for masked/blended materials.
+
 ## TODO
 
 - Handle `XrEventDataReferenceSpaceChangePending`: identify the affected reference-space type and retain the event until `changeTime`. Existing `XrSpace` handles remain valid and must not be recreated. When `poseValid` is `XR_TRUE`, use `poseInPreviousSpace` to preserve continuity for world-locked content; otherwise reset or re-anchor content whose previous-to-new origin relationship cannot be determined.
+
+The living room TV plays the cat clip from the sibling Vulkanizer
+`test/resources/video` directory. It decodes and filters each presentation frame
+once, then shares that frame between both eyes. The screen emits the current
+video colors into DDGI/NRC and reflections; textured LTC adds diffuse and glossy
+area lighting with scene visibility. The implementation follows the
+[original authors' reference](https://eheitzresearch.wordpress.com/415-2/) and
+[official LTC tables](https://github.com/selfshadow/ltc_code), with attribution
+in `LICENSES/ltc.txt`. Video decoding uses an additional H.264 decode queue in
+both desktop and OpenXR device creation.
+`--video-path "C:/path/to/video.mp4"` selects the TV video in either lighting executable. Without it, the TV uses the cat clip. Quote paths containing spaces.
+
+TV audio is shared by both eyes and synchronized to the audio sample clock. It starts after the first stereo frame and loops with the video. The default cat clip has a silent audio track; use --video-path with an audible clip for sound.
+
+Living room scene lights can be disabled with --no-lights (both lamps), --no-ceiling-light, or --no-standing-light. These flags affect the authored scene lights; TV video emission and LTC lighting remain enabled. --no-lights also disables Sponza's point light. The cushion fabrics use the ceiling lamp's metallic/roughness factors and texture (effective metalness 0 and roughness 194/255), retaining their own base color and normal maps.

@@ -15,7 +15,7 @@ class VulkanXRConan(ConanFile):
     settings = "os", "compiler", "build_type", "arch"
     options = {"with_nsight_aftermath": [True, False]}
     default_options = {"with_nsight_aftermath": False}
-    exports_sources = "CMakeLists.txt", "src/*", "shaders/*", "example/*", "openxr_info/*", "test/*"
+    exports_sources = "CMakeLists.txt", "cmake/*", "src/*", "shaders/*", "example/*", "openxr_info/*", "resources/*", "test/*"
 
     def validate(self):
         check_min_cppstd(self, "20")
