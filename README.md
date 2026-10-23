@@ -1,6 +1,61 @@
 # VulkanXR
 
-A minimal C++20 project using the same Conan 2 + CMake setup as Vista.
+VulkanXR hides the complexity of building an OpenXR application with Vulkan and gives you a clear, expressive C++20 DSL instead. You describe the application, session, actions, swapchains, renderer, desktop mirror, and execution mode; VulkanXR handles the OpenXR and Vulkan plumbing needed to run them together.
+
+That includes OpenXR instance and system creation, Vulkan graphics requirements, session state transitions, reference spaces, action synchronization, swapchain acquisition, frame timing, composition layers, and orderly shutdown. Renderers receive the Vulkan and session state they need without having to own the OpenXR application lifecycle.
+
+You do not need a headset connected—or even an OpenXR runtime running—to work on your renderer. Desktop mode skips OpenXR context creation, creates a regular Vulkan context, supplies desktop-backed equivalents of the swapchains and frame state expected by the renderer, adapts keyboard and mouse input to actions and poses, and presents the returned composition layers in a desktop window. This makes normal rendering work, shader iteration, validation, and debugging available throughout development. When you are ready to test in a headset, switch the application mode back to VR; the renderer, session configuration, actions, and composition-layer output remain the same.
+
+The result is application setup that reads like configuration rather than initialization machinery:
+
+```cpp
+#include <vxr/vxr.hpp>
+
+vxr::session::config session_config() {
+    vxr::session::config config;
+    config
+        .stage()
+        .add_action_set(
+            vxr::session::action_set_specification{}
+                .name("movement")
+                .description("Movement controls")
+                .add_action("move_x", vxr::input::oculus_touch::layout::left_thumbstick_x, "Strafe left and right")
+                .add_action("move_y", vxr::input::oculus_touch::layout::left_thumbstick_y, "Move forward and backward")
+        )
+        .add_swapchain(
+            vxr::swapchain_create_info{}
+                .name("projection")
+                .usage()
+                    .color_attachment()
+                .format(VK_FORMAT_R8G8B8A8_SRGB)
+                .extent(2064, 2096)
+                .array_size(2)
+        );
+    return config;
+}
+
+int main(int argc, char **argv) {
+    auto application =
+        vxr::application_builder{}
+            .app_name("My VulkanXR App")
+            .vulkan_api_version(VK_API_VERSION_1_2)
+            .openxr_api_version(XR_API_VERSION_1_0)
+            .mirror()
+                .extent(1280, 720)
+                .multiview(true)
+                .vsync(false)
+            .session(session_config())
+            .renderer(my_renderer::create)
+            .mode(argc > 1 && std::string_view{argv[1]} == "--desktop" ? vxr::application_mode::desktop : vxr::application_mode::vr)
+        .build();
+
+    application->run();
+}
+```
+
+Your renderer focuses on rendering and returns standard OpenXR composition layers. VulkanXR coordinates those layers with the runtime in VR mode or displays them through the Vulkan desktop mirror in desktop mode, allowing the same application to be developed on a monitor and then run in a headset.
+
+The project uses Conan 2 and CMake, following the same dependency layout as Vista.
 
 OpenXR 1.1.62 is consumed from the installed Khronos OpenXR SDK, following the
 `virtual_reality` reference project. Set `OPENXR_DIR` to the SDK's `cmake`
@@ -32,6 +87,8 @@ Conan presets are included by `CMakeUserPresets.json`, matching Vista's layout.
 ## Desktop mode
 
 `vxr::desktop_application` runs a renderer without creating an OpenXR instance. It creates a regular Vulkan context, desktop-owned images exposed through synthetic `vxr::swapchain` handles, and sends the renderer's composition layers to the desktop mirror.
+
+This mode is intended for day-to-day development when a headset is unavailable, disconnected, or inconvenient to wear. No OpenXR runtime or active VR session is required. Renderer initialization, swapchain rendering, composition-layer construction, camera movement, input handling, mirroring, and most graphics debugging can run entirely on the desktop. Hardware-specific behavior—such as runtime capabilities, tracked-device poses, interaction-profile changes, and final headset presentation—can then be verified separately in VR mode without maintaining a second renderer.
 
 Use `vxr::application_builder` to select the runtime without constructing either application directly. It contains and forwards context configuration to `vxr::context::builder`, and adds `.session(...)`, `.renderer(...)`, and `.mode(...)` configuration. The mode can be `vxr::application_mode::vr` or `vxr::application_mode::desktop`, and the window title is taken from `.app_name(...)`.
 
