@@ -14,4 +14,9 @@ conan.lock
 *.dll
 *.exe
 *.pdb
+*.log
+*_log.txt
 
+/.codex/
+/graphify-out/
+/resources/
