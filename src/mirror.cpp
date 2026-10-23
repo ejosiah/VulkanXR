@@ -53,16 +53,16 @@ namespace vxr {
     void mirror::init() {
         swapchain_ = app_.create_swapchain();
         swapchain_views_ = vkz::create_swapchain_image_views(context_.device(), *swapchain_);
-        command_pool_.init(context_.device(), app_.queue_family_index(), VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, app_.graphics_queue());
+        command_pool_.init(context_.device(), app_.queue_family_index(), vkz::command_pool_flags_transient, app_.graphics_queue());
         descriptor_layout_ =
             vkz::make_descriptor_set_layout_builder(context_.device())
                 .name("mirror_source")
                 .binding(0)
-                    .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                    .descriptor_type(vkz::descriptor_type_combined_image_sampler)
                     .descriptor_count(1)
-                    .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                    .shader_stages(vkz::shader_stage_fragment)
                 .create_layout();
-        descriptor_pool_ = vkz::descriptor_pool{context_.device(), 64, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 64}}};
+        descriptor_pool_ = vkz::descriptor_pool{context_.device(), 64, {{static_cast<VkDescriptorType>(vkz::descriptor_type_combined_image_sampler), 64}}};
         sampler_ = vkz::sampler::builder(context_.device()).mag_filter(VK_FILTER_LINEAR).min_filter(VK_FILTER_LINEAR).address_mode(VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE).build();
         create_pipelines();
         initialized_ = true;
@@ -143,11 +143,12 @@ namespace vxr {
                 .scissor()
                     .offset(0, 0)
                     .extent(static_cast<std::int32_t>(swapchain_->width()), static_cast<std::int32_t>(swapchain_->height()))
+                    .add()
             .rasterization_state()
                 .polygon_mode_fill()
                 .cull_none()
             .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT);
+                .rasterization_samples(vkz::sample_count_x1);
 
         auto &attachment = builder.color_blend_state().attachment();
         if (context_.blend_mode == XR_ENVIRONMENT_BLEND_MODE_ALPHA_BLEND || context_.blend_mode == XR_ENVIRONMENT_BLEND_MODE_OPAQUE) {
@@ -189,7 +190,7 @@ namespace vxr {
         return builder
             .layout()
                 .add_descriptor_set_layout(descriptor_layout_)
-                .add_push_constant_range(VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
+                .add_push_constant_range(vkz::shader_stage_vertex | vkz::shader_stage_fragment, 0, sizeof(push_constants))
             .dynamic_render_pass()
                 .add_color_attachment(swapchain_->format())
             .name(name)
@@ -228,10 +229,33 @@ namespace vxr {
         vkDestroyFence(context_.device().logical, acquire_fence, nullptr);
 
         const auto command_buffer = command_pool_.create_command_buffer();
-        const VkImageSubresourceRange destination_range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        const VkImageSubresourceRange destination_range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, 0, 1};
         VkImage destination = swapchain_->get_image(swapchain_image_index);
-        vkz::barrier::push_and_flush(command_buffer, destination, destination_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        vkz::barrier::push_and_flush(command_buffer, destination, destination_range, vkz::pipeline_stage_none, vkz::pipeline_stage_color_attachment_output, vkz::access_none,
+                                     vkz::access_color_attachment_write, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
+        // Transition sampled layers outside dynamic rendering.
+        const auto transition_sources = [&](bool sampled) {
+            for (const auto &[handle, index] : image_indices) {
+                const auto entry = std::ranges::find_if(context_.swapchains, [&](const auto &entry) {
+                    return entry.second.handle() == handle;
+                });
+                if (entry == context_.swapchains.end()) continue;
+                const auto &source = entry->second;
+                if (!(source.create_info().usage_flags_ & XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT)) continue;
+                const VkImageSubresourceRange range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, 0,
+                    source.create_info().array_size_ * source.create_info().face_count_};
+                auto source_image = source.images()[index].image;
+                vkz::barrier::push_and_flush(command_buffer, source_image, range,
+                    sampled ? vkz::pipeline_stage_color_attachment_output : vkz::pipeline_stage_fragment_shader,
+                    sampled ? vkz::pipeline_stage_fragment_shader : vkz::pipeline_stage_color_attachment_output,
+                    sampled ? vkz::access_color_attachment_write : vkz::access_shader_read,
+                    sampled ? vkz::access_shader_read : vkz::access_color_attachment_read_write,
+                    sampled ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                    sampled ? VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL : VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            }
+        };
+        transition_sources(true);
 
         vkz::render_info render_info;
         render_info.color_attachments.push_back({swapchain_views_[swapchain_image_index], swapchain_->format(), {0.0F, 0.0F, 0.0F, 1.0F}});
@@ -243,11 +267,10 @@ namespace vxr {
             }
         });
 
-        vkz::barrier::push_and_flush(command_buffer, destination, destination_range, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_NONE,
-                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_NONE, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
-        VKZ_CHECK_VULKAN(vkEndCommandBuffer(command_buffer));
+        transition_sources(false);
+        vkz::barrier::push_and_flush(command_buffer, destination, destination_range, vkz::pipeline_stage_color_attachment_output, vkz::pipeline_stage_none,
+                                     vkz::access_color_attachment_write, vkz::access_none, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR);
         command_pool_.submit_and_wait(command_buffer);
-        command_pool_.destroy(command_buffer);
 
         const VkSwapchainKHR handle = swapchain_->handle();
         VkPresentInfoKHR present_info{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -344,23 +367,19 @@ namespace vxr {
                 .image(image)
                 .view_type(view_type)
                 .format(source_swapchain.format())
-                .aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT)
+                .aspect_mask(vkz::image_aspect_color)
                 .base_array_layer(base_layer)
                 .layer_count(layer_count)
                 .build();
         temporary_views.push_back(view);
 
-        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, base_layer, layer_count};
-        vkz::barrier::push_and_flush(command_buffer, image.handle, range, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
-                                     VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_2_SHADER_READ_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         const auto descriptor_set = descriptor_pool_.allocate(descriptor_layout_);
         vkz::update_descriptor(context_.device(), {.descriptor_set = descriptor_set, .bindings = {vkz::texture_descriptor{view, sampler_, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, 0}}});
         pipeline.descriptor_sets = {descriptor_set};
         vkz::bind_pipeline(command_buffer, pipeline);
-        vkz::push_constants(command_buffer, pipeline, constants);
+        vkz::push_constants(command_buffer, pipeline, constants, vkz::shader_stage_vertex | vkz::shader_stage_fragment);
         vkz::draw(command_buffer, pipeline.handle == quad_pipeline_.handle ? 6 : 3);
-        vkz::barrier::push_and_flush(command_buffer, image.handle, range, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                     VK_ACCESS_2_SHADER_READ_BIT, VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+
     }
 
     std::uint32_t mirror::image_index(XrSwapchain handle, const std::map<XrSwapchain, std::uint32_t> &image_indices) const {

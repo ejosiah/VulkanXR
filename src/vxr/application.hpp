@@ -16,7 +16,7 @@ namespace vxr {
 
     class application final : public app {
       public:
-        application(context::builder &context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
+        application(context::builder context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
 
         void run() override;
 
@@ -25,7 +25,7 @@ namespace vxr {
         [[nodiscard]] static bool poll_events(const context &xr_context, XrEventDataBuffer &event);
 
       private:
-        context::builder &context_builder_;
+        context::builder context_builder_;
         session::config session_config_;
         renderer_factory renderer_factory_;
         mirror_config mirror_config_;

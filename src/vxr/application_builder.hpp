@@ -94,12 +94,12 @@ namespace vxr {
             return derived();
         }
 
-        Derived &add_queue(VkQueueFlagBits flags) {
+        Derived &add_queue(vkz::queue flags) {
             application().context_builder_.add_queue(flags);
             return derived();
         }
 
-        Derived &add_unique_queue(VkQueueFlagBits flags) {
+        Derived &add_unique_queue(vkz::queue flags) {
             application().context_builder_.add_unique_queue(flags);
             return derived();
         }

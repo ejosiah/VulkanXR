@@ -7,6 +7,7 @@
 #include <volk.h>
 #include <spdlog/spdlog.h>
 #include <vulkanizer/log.hpp>
+#include <vulkanizer/video.hpp>
 
 #include <algorithm>
 #include <array>
@@ -96,9 +97,9 @@ namespace vxr {
                 std::vector<VkQueueFamilyProperties> families(family_count);
                 vkGetPhysicalDeviceQueueFamilyProperties(physical_device, &family_count, families.data());
 
-                const VkQueueFlags requested_flags = queue_flags();
+                const vkz::queue requested_flags = queue_flags();
                 const auto family = std::find_if(families.begin(), families.end(), [requested_flags](const VkQueueFamilyProperties &properties) {
-                    return properties.queueCount > 0 && (properties.queueFlags & requested_flags) == requested_flags;
+                    return properties.queueCount > 0 && has_flag(static_cast<vkz::queue>(properties.queueFlags), requested_flags);
                 });
                 if (family == families.end()) {
                     throw std::runtime_error{"The OpenXR Vulkan device has no compatible queue family"};
@@ -114,6 +115,41 @@ namespace vxr {
                 queue_create_info.queueCount = queue_count;
                 queue_create_info.pQueuePriorities = priorities.data();
 
+                std::vector<VkDeviceQueueCreateInfo> queue_create_infos{queue_create_info};
+
+                for (uint32_t bit = 1; bit != 0; bit <<= 1) {
+                    const auto flag = static_cast<vkz::queue>(bit);
+                    if (!has_flag(unique_queue_flags(), flag))
+                        continue;
+
+                    uint32_t additional_family = UINT32_MAX;
+
+                    if (flag == vkz::queue_video_decode) {
+                        additional_family = vkz::video::decode_queue_family(physical_device);
+                    } else {
+                        for (uint32_t i = 0; i < families.size(); ++i) {
+                            if (families[i].queueCount > 0 && (families[i].queueFlags & bit) != 0
+                                && std::none_of(queue_create_infos.begin(), queue_create_infos.end(),
+                                    [i](const auto &value) { return value.queueFamilyIndex == i; })) {
+                                additional_family = i;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (additional_family == UINT32_MAX)
+                        throw std::runtime_error{"The OpenXR Vulkan device has no additional requested queue family"};
+
+                    if (std::none_of(queue_create_infos.begin(), queue_create_infos.end(),
+                        [additional_family](const auto &value) { return value.queueFamilyIndex == additional_family; })) {
+                        auto additional_queue = VkDeviceQueueCreateInfo{VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO};
+                        additional_queue.queueFamilyIndex = additional_family;
+                        additional_queue.queueCount = 1;
+                        additional_queue.pQueuePriorities = priorities.data();
+                        queue_create_infos.push_back(additional_queue);
+                    }
+                }
+
                 auto device_create_info = VkDeviceCreateInfo{VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
                 std::vector<const char *> extensions{device_extensions().begin(), device_extensions().end()};
                 if (api_version_ < VK_API_VERSION_1_3 && std::ranges::find(extensions, std::string_view{VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME}) == extensions.end()) {
@@ -122,8 +158,8 @@ namespace vxr {
                 const auto layers = device_layers();
                 VkPhysicalDeviceDynamicRenderingFeatures dynamic_rendering{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES, const_cast<void *>(device_extension_chain()), VK_TRUE};
                 device_create_info.pNext = &dynamic_rendering;
-                device_create_info.queueCreateInfoCount = 1;
-                device_create_info.pQueueCreateInfos = &queue_create_info;
+                device_create_info.queueCreateInfoCount = static_cast<uint32_t>(queue_create_infos.size());
+                device_create_info.pQueueCreateInfos = queue_create_infos.data();
                 device_create_info.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
                 device_create_info.ppEnabledExtensionNames = extensions.data();
                 device_create_info.enabledLayerCount = static_cast<uint32_t>(layers.size());

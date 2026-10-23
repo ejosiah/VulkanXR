@@ -10,6 +10,7 @@
 #include <vxr/application_builder.hpp>
 #include <vxr/app.hpp>
 #include <vxr/backoff.hpp>
+#include <vxr/camera.hpp>
 #include <vxr/extension_dispatch.hpp>
 #include <vxr/font_pipeline.hpp>
 #include <vxr/input.hpp>

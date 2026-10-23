@@ -84,9 +84,9 @@ void checkerboard_renderer::init() {
 
         vkz::scope_command_buffer commands{device(), graphics_queue_family(), graphics_queue()};
         vkz::copy(commands, source, image);
-        const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, static_cast<std::uint32_t>(layers_.size())};
-        vkz::barrier::push_and_flush(commands, image, range, VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
-                                     VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+        const VkImageSubresourceRange range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, 0, static_cast<std::uint32_t>(layers_.size())};
+        vkz::barrier::push_and_flush(commands, image, range, vkz::pipeline_stage_transfer, vkz::pipeline_stage_color_attachment_output, vkz::access_transfer_write,
+                                     vkz::access_color_attachment_read, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     }
 
     staging.return_memory(staging_memory);

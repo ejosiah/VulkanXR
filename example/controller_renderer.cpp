@@ -61,10 +61,10 @@ namespace {
 
 void controller_renderer::init() {
     allocator_ = vkz::vma_memory_allocator::create(vulkan_context());
-    command_pool_.init(device(), graphics_queue_family(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue());
+    command_pool_.init(device(), graphics_queue_family(), vkz::command_pool_flags_reset_command_buffer, graphics_queue());
     text_buffer_ =
         vkz::buffer::builder(allocator_)
-            .usage(VK_BUFFER_USAGE_STORAGE_BUFFER_BIT)
+            .usage(vkz::buffer_usage_storage)
             .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
             .size(sizeof(text_buffer))
             .build();
@@ -73,13 +73,13 @@ void controller_renderer::init() {
         vkz::make_descriptor_set_layout_builder(device())
             .name("controller_text")
             .binding(0)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER)
+                .descriptor_type(vkz::descriptor_type_storage_buffer)
                 .descriptor_count(1)
-                .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                .shader_stages(vkz::shader_stage_fragment)
             .create_layout();
-    descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}}};
+    descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{static_cast<VkDescriptorType>(vkz::descriptor_type_storage_buffer), 1}}};
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
-    vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_, .bindings = {vkz::descriptor<vkz::buffer_descriptor>(text_buffer_, 0)}});
+    vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_, .bindings = {vkz::make_descriptor<vkz::buffer_descriptor>(text_buffer_, 0)}});
     create_image_views();
     font_pipeline_ = vxr::font_pipeline::create({device(), descriptor_layout_, format, {width, height}, shader_source("font.vert"), shader_source("font.frag"), "controller_font"});
 
@@ -256,16 +256,16 @@ void controller_renderer::create_image_views() {
         image.handle = swapchain_image.image;
         image.create_info = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
         image.create_info.format = format;
-        image_views_.push_back(vkz::image_view::builder(device()).image(image).format(format).aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT).build());
+        image_views_.push_back(vkz::image_view::builder(device()).image(image).format(format).aspect_mask(vkz::image_aspect_color).build());
     }
 }
 
 void controller_renderer::draw(std::uint32_t image_index) {
     const auto command_buffer = command_pool_.create_command_buffer();
     auto image = get_swapchain("controller_text").images()[image_index].image;
-    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
-    vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    const VkImageSubresourceRange range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, 0, 1};
+    vkz::barrier::push_and_flush(command_buffer, image, range, vkz::pipeline_stage_none, vkz::pipeline_stage_color_attachment_output, vkz::access_none,
+                                 vkz::access_color_attachment_write, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
     const vkz::render_info render_info{{{image_views_.at(image_index), format, {0.02F, 0.03F, 0.05F, 1.0F}}}, {}, {}, {width, height}};
     vkz::render(command_buffer, render_info, [&] {
         font_pipeline_.bind(command_buffer, descriptor_set_, {{0.02F, 0.03F, 0.05F, 1.0F}});

@@ -11,7 +11,7 @@ namespace vxr {
 
     class desktop_application final : public app {
       public:
-        desktop_application(session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config = {});
+        desktop_application(session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config = {}, vkz::builder vulkan_builder = {});
 
         void run() override;
 
@@ -33,6 +33,7 @@ namespace vxr {
         session::config session_config_;
         renderer_factory renderer_factory_;
         mirror_config mirror_config_;
+        vkz::builder vulkan_builder_;
         vkz::glfw_runtime windowing_;
         window_ptr window_;
         surface_provider_ptr surface_provider_;

@@ -31,8 +31,8 @@ namespace vxr {
         return *this;
     }
 
-    application_builder::application_builder()
-    : mirror_builder_{*this} {}
+    application_builder::application_builder() : mirror_builder_{*this} {
+    }
 
     mirror_builder &application_builder::mirror(bool enabled) {
         mirror_config_.enabled = enabled;
@@ -48,9 +48,9 @@ namespace vxr {
         }
         mirror_config_.title = context_builder_.app_name();
         if (mode_ == application_mode::desktop) {
-            return std::make_unique<desktop_application>(std::move(*session_config_), renderer_factory_, std::move(mirror_config_));
+            return std::make_unique<desktop_application>(std::move(*session_config_), renderer_factory_, std::move(mirror_config_), std::move(static_cast<vkz::builder &>(context_builder_)));
         }
-        return std::make_unique<vxr::application>(context_builder_, std::move(*session_config_), renderer_factory_, std::move(mirror_config_));
+        return std::make_unique<vxr::application>(std::move(context_builder_), std::move(*session_config_), renderer_factory_, std::move(mirror_config_));
     }
 
 } // namespace vxr

@@ -14,19 +14,19 @@ namespace vxr {
 
         constexpr std::uint32_t desktop_image_count = 3;
 
-        [[nodiscard]] VkImageUsageFlags image_usage(const swapchain_create_info &create_info) {
-            VkImageUsageFlags result = VK_IMAGE_USAGE_SAMPLED_BIT;
+        [[nodiscard]] vkz::image_usage image_usage(const swapchain_create_info &create_info) {
+            vkz::image_usage result = vkz::image_usage_sampled;
             if ((create_info.usage_flags_ & XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT) != 0) {
-                result |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+                result |= vkz::image_usage_color;
             }
             if ((create_info.usage_flags_ & XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) != 0) {
-                result |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+                result |= vkz::image_usage_depth_stencil;
             }
             if ((create_info.usage_flags_ & XR_SWAPCHAIN_USAGE_TRANSFER_SRC_BIT) != 0) {
-                result |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+                result |= vkz::image_usage_transfer_src;
             }
             if ((create_info.usage_flags_ & XR_SWAPCHAIN_USAGE_TRANSFER_DST_BIT) != 0) {
-                result |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+                result |= vkz::image_usage_transfer_dst;
             }
             return result;
         }
@@ -44,8 +44,8 @@ namespace vxr {
 
     } // namespace
 
-    desktop_application::desktop_application(session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config)
-        : session_config_{std::move(session_config)}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
+    desktop_application::desktop_application(session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config, vkz::builder vulkan_builder)
+        : session_config_{std::move(session_config)}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)}, vulkan_builder_{std::move(vulkan_builder)} {
         session_config_.validate();
         vkz::spdlog_adapter::install();
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -75,13 +75,8 @@ namespace vxr {
     }
 
     void desktop_application::create_vulkan_context() {
-        auto builder = vkz::context::builder();
-        builder
-            .app_name(mirror_config_.title)
-            .api_version(VK_API_VERSION_1_3)
-            .surface(*surface_provider_)
-            .add_queue(VK_QUEUE_GRAPHICS_BIT)
-            .add_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
+        auto &builder = vulkan_builder_;
+        builder.app_name(mirror_config_.title).surface(*surface_provider_).add_queue(vkz::queue_graphics).add_device_extension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
 #ifndef NDEBUG
         builder.add_instance_extension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 #endif
@@ -116,18 +111,17 @@ namespace vxr {
             std::vector<VkImage> handles;
             handles.reserve(desktop_image_count);
             for (std::uint32_t index = 0; index < desktop_image_count; ++index) {
-                auto image =
-                    vkz::image::builder(allocator_)
-                        .flags(specification.face_count_ == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0)
-                        .type(VK_IMAGE_TYPE_2D)
-                        .format(specification.format_)
-                        .extent(specification.width_, specification.height_)
-                        .mip_levels(specification.mip_count_)
-                        .array_layers(specification.array_size_ * specification.face_count_)
-                        .samples(static_cast<VkSampleCountFlagBits>(specification.sample_count_))
-                        .usage(image_usage(specification))
-                        .memory_usage(VMA_MEMORY_USAGE_GPU_ONLY)
-                        .build();
+                auto image = vkz::image::builder(allocator_)
+                                 .flags(specification.face_count_ == 6 ? vkz::image_flags_cube_compatible : vkz::image_flags_none)
+                                 .type(VK_IMAGE_TYPE_2D)
+                                 .format(specification.format_)
+                                 .extent(specification.width_, specification.height_)
+                                 .mip_levels(specification.mip_count_)
+                                 .array_layers(specification.array_size_ * specification.face_count_)
+                                 .samples(static_cast<vkz::sample_count>(specification.sample_count_))
+                                 .usage(image_usage(specification))
+                                 .memory_usage(VMA_MEMORY_USAGE_GPU_ONLY)
+                                 .build();
                 handles.push_back(image.handle);
                 owned_images.push_back(image);
             }

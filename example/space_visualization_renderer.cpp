@@ -93,7 +93,7 @@ namespace {
 
 void space_visualization_renderer::init() {
     allocator_ = vkz::vma_memory_allocator::create(vulkan_context());
-    command_pool_.init(device(), graphics_queue_family(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue());
+    command_pool_.init(device(), graphics_queue_family(), vkz::command_pool_flags_reset_command_buffer, graphics_queue());
     create_cube();
     create_image_views();
     create_pipeline();
@@ -271,7 +271,7 @@ void space_visualization_renderer::create_cube() {
     const auto cube = vkz::prim::cube();
     vertex_buffer_ =
         vkz::buffer::builder(allocator_)
-            .usage(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+            .usage(vkz::buffer_usage_vertex)
             .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
             .size(VKZ_BYTE_SIZE(cube.vertices))
             .build();
@@ -281,7 +281,7 @@ void space_visualization_renderer::create_cube() {
 
     index_buffer_ =
         vkz::buffer::builder(allocator_)
-            .usage(VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+            .usage(vkz::buffer_usage_index)
             .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
             .size(VKZ_BYTE_SIZE(cube.indices))
             .build();
@@ -304,7 +304,7 @@ void space_visualization_renderer::create_image_views() {
                     .image(image)
                     .view_type(VK_IMAGE_VIEW_TYPE_2D)
                     .format(color_format)
-                    .aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT)
+                    .aspect_mask(vkz::image_aspect_color)
                     .base_array_layer(view_index)
                     .layer_count(1)
                     .build()
@@ -325,7 +325,7 @@ void space_visualization_renderer::create_image_views() {
                         .image(image)
                         .view_type(VK_IMAGE_VIEW_TYPE_2D)
                         .format(depth_format)
-                        .aspect_mask(VK_IMAGE_ASPECT_DEPTH_BIT)
+                        .aspect_mask(vkz::image_aspect_depth)
                         .base_array_layer(view_index)
                         .layer_count(1)
                         .build()
@@ -341,13 +341,13 @@ void space_visualization_renderer::create_image_views() {
             vkz::image::builder(allocator_)
                 .format(depth_format)
                 .extent(create_info.width_, create_info.height_)
-                .usage(VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)
+                .usage(vkz::image_usage_depth_stencil)
                 .build();
         depth_views_[view_index].push_back(
             vkz::image_view::builder(device())
                 .image(owned_depth_images_[view_index])
                 .format(depth_format)
-                .aspect_mask(VK_IMAGE_ASPECT_DEPTH_BIT)
+                .aspect_mask(vkz::image_aspect_depth)
                 .build()
         );
     }
@@ -379,7 +379,7 @@ void space_visualization_renderer::create_pipeline() {
                 .cull_back_face()
                 .front_face_counter_clockwise()
             .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+                .rasterization_samples(vkz::sample_count_x1)
             .depth_stencil_state()
                 .enable_depth_test()
                 .enable_depth_write()
@@ -388,7 +388,7 @@ void space_visualization_renderer::create_pipeline() {
                 .attachment()
                     .add()
             .layout()
-                .add_push_constant_range(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(push_constants))
+                .add_push_constant_range(vkz::shader_stage_vertex, 0, sizeof(push_constants))
             .dynamic_render_pass()
                 .add_color_attachment(color_format)
                 .depth_attachment(depth_format)
@@ -426,12 +426,12 @@ void space_visualization_renderer::render_view(const vxr::frame_info &frame, std
     const auto command_buffer = command_pool_.create_command_buffer();
     auto color_image = get_swapchain("main").images()[frame.image.image_index].image;
     auto depth_image_handle = context_.depth_supported ? get_swapchain("main_depth").images()[depth_image].image : owned_depth_images_[view_index].handle;
-    const VkImageSubresourceRange color_range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
-    const VkImageSubresourceRange depth_range{VK_IMAGE_ASPECT_DEPTH_BIT, 0, 1, context_.depth_supported ? view_index : 0, 1};
-    vkz::barrier::push_and_flush(command_buffer, color_image, color_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-    vkz::barrier::push_and_flush(command_buffer, depth_image_handle, depth_range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
-                                 VK_ACCESS_2_NONE, VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+    const VkImageSubresourceRange color_range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, view_index, 1};
+    const VkImageSubresourceRange depth_range{static_cast<VkImageAspectFlags>(vkz::image_aspect_depth), 0, 1, context_.depth_supported ? view_index : 0, 1};
+    vkz::barrier::push_and_flush(command_buffer, color_image, color_range, vkz::pipeline_stage_none, vkz::pipeline_stage_color_attachment_output, vkz::access_none,
+                                 vkz::access_color_attachment_write, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    vkz::barrier::push_and_flush(command_buffer, depth_image_handle, depth_range, vkz::pipeline_stage_none, vkz::pipeline_stage_early_fragment_tests | vkz::pipeline_stage_late_fragment_tests,
+                                 vkz::access_none, vkz::access_depth_stencil_attachment_read_write, VK_IMAGE_LAYOUT_UNDEFINED,
                                  VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL);
 
     vkz::render_info render_info;

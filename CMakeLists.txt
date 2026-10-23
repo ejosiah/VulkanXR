@@ -19,7 +19,7 @@ if(EXISTS "${VULKANXR_CONAN_GENERATORS}/vulkanizer-config.cmake")
     list(PREPEND CMAKE_PREFIX_PATH "${VULKANXR_CONAN_GENERATORS}")
 endif()
 
-find_package(vulkanizer CONFIG REQUIRED)
+find_package(vulkanizer 1.0.1 CONFIG REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(spdlog CONFIG REQUIRED)
 find_package(OPENXR 1.1.62 CONFIG REQUIRED)

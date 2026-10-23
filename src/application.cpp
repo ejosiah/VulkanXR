@@ -12,8 +12,8 @@
 
 namespace vxr {
 
-    application::application(context::builder &context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config)
-        : context_builder_{context_builder}, session_config_{std::move(session_config)}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
+    application::application(context::builder context_builder, session::config session_config, renderer_factory renderer_factory, mirror_config mirror_config)
+        : context_builder_{std::move(context_builder)}, session_config_{std::move(session_config)}, renderer_factory_{std::move(renderer_factory)}, mirror_config_{std::move(mirror_config)} {
         if (!mirror_config_.enabled) {
             return;
         }

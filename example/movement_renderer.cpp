@@ -54,7 +54,7 @@ namespace {
 
 void movement_renderer::init() {
     allocator_ = vkz::vma_memory_allocator::create(vulkan_context());
-    command_pool_.init(device(), graphics_queue_family(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, graphics_queue());
+    command_pool_.init(device(), graphics_queue_family(), vkz::command_pool_flags_reset_command_buffer, graphics_queue());
     load_textures();
     create_projection_resources();
     create_cube();
@@ -95,11 +95,7 @@ std::vector<vxr::vibration> movement_renderer::set(const vxr::action_set &action
 }
 
 void movement_renderer::reference_space_changed(const XrEventDataReferenceSpaceChangePending &event) {
-    if (event.referenceSpaceType != XR_REFERENCE_SPACE_TYPE_STAGE || !tracked_head_in_world_valid_ || context_.views.empty()) {
-        return;
-    }
-
-    world_from_tracking_ = vxr::compose(tracked_head_in_world_, vxr::inverse(head_pose(context_.views)));
+    camera_.reference_space_changed(event, context_.views);
 }
 
 void movement_renderer::update_teleport(const vxr::action_set &actions) {
@@ -113,8 +109,7 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
 
     if (!right_active) {
         if (teleport_.active && teleport_.valid) {
-            world_offset_.x += teleport_.target.x - head_position_.x;
-            world_offset_.z += teleport_.target.z - head_position_.z;
+            camera_.teleport(teleport_.target);
         }
         teleport_ = {};
         return;
@@ -127,8 +122,8 @@ void movement_renderer::update_teleport(const vxr::action_set &actions) {
         return;
     }
 
-    const auto controller = world_pose(aim.value<vxr::pose>());
-    teleport_.origin = controller.position + world_offset_;
+    const auto controller = camera_.world_pose(aim.value<vxr::pose>());
+    teleport_.origin = controller.position;
     teleport_.velocity = controller.orientation * vxr::vec3{0.0F, 0.0F, -6.5F};
     teleport_.valid = intersect_ground(teleport_.origin, teleport_.velocity, teleport_.target);
 }
@@ -142,20 +137,8 @@ void movement_renderer::update_camera_movement(const vxr::action_set &actions) {
     const bool movement_active = !vive_active || vive_trackpad_pressed;
     const float x = movement_active && move_x.active ? move_x.value<float>() : 0.0F;
     const float y = movement_active && move_y.active ? move_y.value<float>() : 0.0F;
-    vxr::vec3 forward = head_orientation_ * vxr::vec3{0.0F, 0.0F, -1.0F};
-    vxr::vec3 right = head_orientation_ * vxr::vec3{1.0F, 0.0F, 0.0F};
-    forward.y = 0.0F;
-    right.y = 0.0F;
-    if (vxr::dot(forward, forward) > 0.0F) {
-        forward = vxr::normalize(forward);
-    }
-    if (vxr::dot(right, right) > 0.0F) {
-        right = vxr::normalize(right);
-    }
     constexpr float movement_speed = 2.0F;
-    const vxr::vec3 movement = (forward * y + right * x) * movement_speed * frame_seconds_;
-    world_offset_ += movement;
-    head_position_ += movement;
+    camera_.move({x, y}, movement_speed * frame_seconds_);
 }
 
 void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
@@ -169,18 +152,12 @@ void movement_renderer::update_camera_turn(const vxr::action_set &actions) {
     const bool vive_trackpad_pressed = turn_click.active && turn_click.value<bool>();
     const bool turning_active = !vive_active || vive_trackpad_pressed;
     const float x = turning_active && turn_x.active ? turn_x.value<float>() : 0.0F;
-    if (!tracked_head_in_world_valid_ || std::abs(x) < 0.15F) {
+    if (!camera_.valid() || std::abs(x) < 0.15F) {
         return;
     }
 
     constexpr float turn_speed = 1.5F;
-    const auto rotation = vxr::angleAxis(-x * turn_speed * frame_seconds_, vxr::vec3{0.0F, 1.0F, 0.0F});
-    vxr::pose turn;
-    turn.orientation = rotation;
-    turn.position = tracked_head_in_world_.position - rotation * tracked_head_in_world_.position;
-    world_from_tracking_ = vxr::compose(turn, world_from_tracking_);
-    tracked_head_in_world_ = vxr::compose(turn, tracked_head_in_world_);
-    head_orientation_ = tracked_head_in_world_.orientation;
+    camera_.turn(-x * turn_speed * frame_seconds_);
 }
 
 bool movement_renderer::vive_controller_active() const {
@@ -188,19 +165,6 @@ bool movement_renderer::vive_controller_active() const {
     return std::ranges::any_of(context_.interaction_profiles, [](const auto &entry) {
         return entry.second == vive_profile;
     });
-}
-
-vxr::pose movement_renderer::world_pose(const vxr::pose &tracking_pose) const noexcept {
-    return vxr::compose(world_from_tracking_, tracking_pose);
-}
-
-vxr::pose movement_renderer::head_pose(const std::vector<XrView> &views) {
-    auto result = vxr::to_pose(views.front().pose);
-    result.position = {};
-    for (const auto &view : views) {
-        result.position += vxr::to_pose(view.pose).position / static_cast<float>(views.size());
-    }
-    return result;
 }
 
 bool movement_renderer::intersect_ground(const vxr::vec3 &origin, const vxr::vec3 &velocity, vxr::vec3 &intersection) {
@@ -235,10 +199,7 @@ void movement_renderer::render(const vxr::frame_info &frame, vxr::layers &layers
     frame_seconds_ = std::clamp(static_cast<float>(frame.predicted_duration) * 1.0e-9F, 0.0F, 0.1F);
     const auto view_count = std::min(frame.view.views.size(), projection_layer_views_.size());
     if (view_count > 0) {
-        tracked_head_in_world_ = world_pose(head_pose(frame.view.views));
-        tracked_head_in_world_valid_ = true;
-        head_position_ = tracked_head_in_world_.position + world_offset_;
-        head_orientation_ = tracked_head_in_world_.orientation;
+        camera_.update(frame.view.views);
     }
     for (std::uint32_t view_index = 0; view_index < view_count; ++view_index) {
         render_projection_view(frame, view_index);
@@ -303,28 +264,28 @@ void movement_renderer::create_projection_resources() {
         vkz::make_descriptor_set_layout_builder(device())
             .name("movement")
             .binding(0)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vkz::descriptor_type_combined_image_sampler)
                 .descriptor_count(1)
-                .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                .shader_stages(vkz::shader_stage_fragment)
             .binding(1)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vkz::descriptor_type_combined_image_sampler)
                 .descriptor_count(1)
-                .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                .shader_stages(vkz::shader_stage_fragment)
             .binding(2)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vkz::descriptor_type_combined_image_sampler)
                 .descriptor_count(1)
-                .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                .shader_stages(vkz::shader_stage_fragment)
             .binding(3)
-                .descriptor_type(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER)
+                .descriptor_type(vkz::descriptor_type_combined_image_sampler)
                 .descriptor_count(1)
-                .shader_stages(VK_SHADER_STAGE_FRAGMENT_BIT)
+                .shader_stages(vkz::shader_stage_fragment)
             .create_layout();
 
-    descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4}}};
+    descriptor_pool_ = vkz::descriptor_pool{device(), 1, {{static_cast<VkDescriptorType>(vkz::descriptor_type_combined_image_sampler), 4}}};
     descriptor_set_ = descriptor_pool_.allocate(descriptor_layout_);
     vkz::update_descriptor(device(), {.descriptor_set = descriptor_set_,
-                                      .bindings = {vkz::descriptor<vkz::texture_descriptor>(env_diffuse_, 0), vkz::descriptor<vkz::texture_descriptor>(grid_, 1),
-                                                   vkz::descriptor<vkz::texture_descriptor>(env_irradiance_, 2), vkz::descriptor<vkz::texture_descriptor>(env_specular_, 3)}});
+                                      .bindings = {vkz::make_descriptor<vkz::texture_descriptor>(env_diffuse_, 0), vkz::make_descriptor<vkz::texture_descriptor>(grid_, 1),
+                                                   vkz::make_descriptor<vkz::texture_descriptor>(env_irradiance_, 2), vkz::make_descriptor<vkz::texture_descriptor>(env_specular_, 3)}});
     create_projection_pipeline();
     setup_projection_layer();
 }
@@ -342,7 +303,7 @@ void movement_renderer::create_projection_views() {
                     .image(image)
                     .view_type(VK_IMAGE_VIEW_TYPE_2D)
                     .format(projection_format)
-                    .aspect_mask(VK_IMAGE_ASPECT_COLOR_BIT)
+                    .aspect_mask(vkz::image_aspect_color)
                     .base_array_layer(view_index)
                     .layer_count(1)
                     .build()
@@ -373,13 +334,13 @@ void movement_renderer::create_projection_pipeline() {
                 .polygon_mode_fill()
                 .cull_none()
             .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+                .rasterization_samples(vkz::sample_count_x1)
             .color_blend_state()
                 .attachment()
                     .add()
             .layout()
                 .add_descriptor_set_layout(descriptor_layout_)
-                .add_push_constant_range(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
+                .add_push_constant_range(vkz::shader_stage_fragment, 0, sizeof(push_constants))
             .dynamic_render_pass()
                 .add_color_attachment(projection_format)
             .name("movement_skybox")
@@ -407,13 +368,13 @@ void movement_renderer::create_projection_pipeline() {
                 .polygon_mode_fill()
                 .cull_none()
             .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+                .rasterization_samples(vkz::sample_count_x1)
             .color_blend_state()
                 .attachment()
                     .add()
             .layout()
                 .add_descriptor_set_layout(descriptor_layout_)
-                .add_push_constant_range(VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof(push_constants))
+                .add_push_constant_range(vkz::shader_stage_fragment, 0, sizeof(push_constants))
             .dynamic_render_pass()
                 .add_color_attachment(projection_format)
             .name("movement_floor")
@@ -425,7 +386,7 @@ void movement_renderer::create_cube() {
     const auto cube = vkz::prim::cube();
     cube_vertex_buffer_ =
         vkz::buffer::builder(allocator_)
-            .usage(VK_BUFFER_USAGE_VERTEX_BUFFER_BIT)
+            .usage(vkz::buffer_usage_vertex)
             .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
             .size(VKZ_BYTE_SIZE(cube.vertices))
             .build();
@@ -435,7 +396,7 @@ void movement_renderer::create_cube() {
 
     cube_index_buffer_ =
         vkz::buffer::builder(allocator_)
-            .usage(VK_BUFFER_USAGE_INDEX_BUFFER_BIT)
+            .usage(vkz::buffer_usage_index)
             .memory_usage(VMA_MEMORY_USAGE_CPU_TO_GPU)
             .size(VKZ_BYTE_SIZE(cube.indices))
             .build();
@@ -471,12 +432,12 @@ void movement_renderer::create_cube_pipeline() {
                 .cull_back_face()
                 .front_face_counter_clockwise()
             .multisample_state()
-                .rasterization_samples(VK_SAMPLE_COUNT_1_BIT)
+                .rasterization_samples(vkz::sample_count_x1)
             .color_blend_state()
                 .attachment()
                     .add()
             .layout()
-                .add_push_constant_range(VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(object_push_constants))
+                .add_push_constant_range(vkz::shader_stage_vertex, 0, sizeof(object_push_constants))
             .dynamic_render_pass()
                 .add_color_attachment(projection_format)
             .name("movement_cube")
@@ -507,8 +468,7 @@ void movement_renderer::render_projection_view(const vxr::frame_info &frame, std
     render_info.render_area = {projection_width, projection_height};
 
     vkz::render(command_buffer, render_info, [&] {
-        auto view = world_pose(vxr::to_pose(frame.view.views[view_index].pose));
-        view.position += world_offset_;
+        const auto view = camera_.world_pose(frame.view.views[view_index].pose);
         const auto view_projection = vxr::projection(frame.view.views[view_index].fov, 0.05F, 100.0F) * vxr::inverse(vxr::to_matrix(view));
         const push_constants constants{vxr::inverse(view_projection), vxr::vec4{view.position, 1.0F}, view_projection, vxr::vec4{teleport_.origin, 1.0F}, vxr::vec4{teleport_.velocity, 0.0F},
                                        vxr::vec4{teleport_.target, 1.0F}, teleport_.active && teleport_.valid ? 1U : 0U};
@@ -536,9 +496,9 @@ movement_renderer::~movement_renderer() {
 }
 
 void movement_renderer::prepare_render(VkCommandBuffer command_buffer, VkImage image, uint32_t view_index) {
-    const VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, view_index, 1};
-    vkz::barrier::push_and_flush(command_buffer, image, range, VK_PIPELINE_STAGE_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE,
-                                 VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+    const VkImageSubresourceRange range{static_cast<VkImageAspectFlags>(vkz::image_aspect_color), 0, 1, view_index, 1};
+    vkz::barrier::push_and_flush(command_buffer, image, range, vkz::pipeline_stage_none, vkz::pipeline_stage_color_attachment_output, vkz::access_none,
+                                 vkz::access_color_attachment_write, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
 }
 
 int main(int argc, char **argv) {

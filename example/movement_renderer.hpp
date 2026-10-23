@@ -1,5 +1,6 @@
 #pragma once
 
+#include <vxr/camera.hpp>
 #include <vxr/renderer.hpp>
 #include <vxr/session_config.hpp>
 
@@ -88,10 +89,6 @@ class movement_renderer final : public vxr::renderer {
 
     [[nodiscard]] bool vive_controller_active() const;
 
-    [[nodiscard]] vxr::pose world_pose(const vxr::pose &tracking_pose) const noexcept;
-
-    [[nodiscard]] static vxr::pose head_pose(const std::vector<XrView> &views);
-
     [[nodiscard]] static bool intersect_ground(const vxr::vec3 &origin, const vxr::vec3 &velocity, vxr::vec3 &intersection);
 
     vkz::vma_memory_allocator allocator_{};
@@ -113,11 +110,6 @@ class movement_renderer final : public vxr::renderer {
     std::array<XrCompositionLayerProjectionView, 2> projection_layer_views_{};
     XrCompositionLayerProjection projection_layer_{};
     teleport_state teleport_{};
-    vxr::vec3 world_offset_{};
-    vxr::pose world_from_tracking_{};
-    vxr::pose tracked_head_in_world_{};
-    bool tracked_head_in_world_valid_{};
-    vxr::vec3 head_position_{};
-    vxr::quat head_orientation_{1.0F, 0.0F, 0.0F, 0.0F};
+    vxr::camera camera_{};
     float frame_seconds_{1.0F / 90.0F};
 };
