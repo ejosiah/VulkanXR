@@ -186,7 +186,7 @@ The living room ceiling lamp retains its authored alpha blend mode, base-color a
 
 ## TODO
 
-- Handle `XrEventDataReferenceSpaceChangePending`: identify the affected reference-space type and retain the event until `changeTime`. Existing `XrSpace` handles remain valid and must not be recreated. When `poseValid` is `XR_TRUE`, use `poseInPreviousSpace` to preserve continuity for world-locked content; otherwise reset or re-anchor content whose previous-to-new origin relationship cannot be determined.
+- Complete reference-space continuity handling: when `XrEventDataReferenceSpaceChangePending::poseValid` is `XR_TRUE`, use `poseInPreviousSpace` to preserve world-locked content. Define the reset or re-anchor policy when the pose is invalid, and support non-stage base spaces that require continuity.
 
 The living room TV plays the cat clip from the sibling Vulkanizer
 `test/resources/video` directory. It decodes and filters each presentation frame
