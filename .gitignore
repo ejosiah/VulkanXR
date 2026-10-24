@@ -16,7 +16,9 @@ conan.lock
 *.pdb
 *.log
 *_log.txt
+__pycache__/
 
 /.codex/
 /graphify-out/
 /resources/
+/VulkanXR-resources.zip

@@ -70,6 +70,20 @@ Shader files placed under `shaders/` are embedded with CMRC in the
 `VulkanXR::shaders` target. In C++, access them through the generated
 `vxr_shaders` resource namespace.
 
+## Resources
+
+The large example assets are hosted separately and are not tracked by Git. From the repository root, download and extract them with Python 3:
+
+```powershell
+python scripts/download_resources.py
+```
+
+The downloader retrieves the [VulkanXR resource archive](https://www.dropbox.com/scl/fi/t24oer35xoa0ea8e8mj0y/VulkanXR-resources.zip?rlkey=17osezpoxa588xiomx83b8l0s&st=v7jt1042&dl=0), verifies its SHA-256 checksum, and extracts its `resources/` directory into the project. If `resources/` already exists and you want to overwrite files with the archived versions, run:
+
+```powershell
+python scripts/download_resources.py --force
+```
+
 ## Configure and build
 
 From a Visual Studio developer PowerShell:
@@ -188,3 +202,7 @@ both desktop and OpenXR device creation.
 TV audio is shared by both eyes and synchronized to the audio sample clock. It starts after the first stereo frame and loops with the video. The default cat clip has a silent audio track; use --video-path with an audible clip for sound.
 
 Living room scene lights can be disabled with --no-lights (both lamps), --no-ceiling-light, or --no-standing-light. These flags affect the authored scene lights; TV video emission and LTC lighting remain enabled. --no-lights also disables Sponza's point light. The cushion fabrics use the ceiling lamp's metallic/roughness factors and texture (effective metalness 0 and roughness 194/255), retaining their own base color and normal maps.
+
+## License
+
+VulkanXR is available under the BSD 2-Clause License. You may freely use, modify, and distribute it provided that the copyright and attribution to Josiah Ebhomenye are retained. See [LICENSE](LICENSE) for the complete terms.

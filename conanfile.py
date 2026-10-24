@@ -8,14 +8,14 @@ class VulkanXRConan(ConanFile):
     version = "0.1.0"
     package_type = "static-library"
 
-    license = "MIT"
+    license = "BSD-2-Clause"
     description = "C++ VulkanXR project template"
     topics = ("vulkan", "openxr", "graphics")
 
     settings = "os", "compiler", "build_type", "arch"
     options = {"with_nsight_aftermath": [True, False]}
     default_options = {"with_nsight_aftermath": False}
-    exports_sources = "CMakeLists.txt", "cmake/*", "src/*", "shaders/*", "example/*", "openxr_info/*", "resources/*", "test/*"
+    exports_sources = "CMakeLists.txt", "LICENSE", "cmake/*", "src/*", "shaders/*", "example/*", "openxr_info/*", "resources/*", "test/*"
 
     def validate(self):
         check_min_cppstd(self, "20")
